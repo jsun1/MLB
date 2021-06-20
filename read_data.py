@@ -81,7 +81,7 @@ def verify_dates(training, field):
             assert(math.isnan(next_day_string))
         # print(next_day.head())
     print(field, next_days.shape)
-    next_days.to_pickle('mlb-processed-data/' + field + '.pkl')
+    # next_days.to_pickle('mlb-processed-data/' + field + '.pkl')
 
 
 def main():
