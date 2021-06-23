@@ -5,15 +5,16 @@ import time
 def merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
-    print(next_days.head())
-    print(player_box.head())
-    print(next_days.shape, player_box.shape)
-    print(player_box.columns)
+    # print(next_days.head())
+    # print(player_box.head())
+    # print(next_days.shape, player_box.shape)
+    # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
     player_box = player_box_features(player_box)
     # player_box = player_box.drop_duplicates(['playerId', 'date'], keep='first')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
-    print(merged.shape)
+    merged = merged.fillna(0)
+    return merged
 
 
 def player_box_features(player_box):
@@ -27,10 +28,13 @@ def player_box_features(player_box):
     player_box = player_box.drop(['gamePk', 'gameDate', 'gameTimeUTC', 'teamId',
        'teamName', 'playerName', 'positionName', 'positionType'], 1)
 
-    # TODO: also add number of games played
+    # Add number of games played
+    player_box['numGames'] = 1
+
     first = lambda x: x.iloc[0]
     num_columns = len(player_box.columns)
-    player_box = player_box.groupby(['date', 'playerId']).agg({'home': 'max', #'gamePk': first, 'gameDate': first, 'gameTimeUTC': first, 'teamId': first,
+    player_box = player_box.groupby(['date', 'playerId']).agg({'numGames': 'sum',
+        'home': 'max', #'gamePk': first, 'gameDate': first, 'gameTimeUTC': first, 'teamId': first,
        #'teamName': first, 'playerName': first,
         'jerseyNum': 'min', 'positionCode': first,
        #'positionName': first, 'positionType': first,
