@@ -1,4 +1,4 @@
-import features
+import datetime
 import numpy as np
 import pandas as pd
 import time
@@ -47,7 +47,7 @@ class Net(nn.Module):
 
 def main():
     # get the training data from features
-    merged = features.merge_features()
+    merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     x_train = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
     # x_train = merged[['caughtStealing', 'sacBunts']].to_numpy(dtype=np.float32)
     # print(len(x_values[0]))
@@ -103,7 +103,9 @@ def main():
     # TODO: internally validate the model
 
     # TODO: save the model and run a submission
-    
+    # save the model
+    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    torch.save(model.state_dict(), 'saved-models/' + date + '.pt')
 
 
 if __name__ == '__main__':

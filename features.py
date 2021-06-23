@@ -1,8 +1,9 @@
+import numpy as np
 import pandas as pd
 import time
 
 
-def merge_features():
+def compute_merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     # print(next_days.head())
@@ -14,6 +15,7 @@ def merge_features():
     # player_box = player_box.drop_duplicates(['playerId', 'date'], keep='first')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)
+    merged = reduce_mem_usage(merged)
     return merged
 
 
@@ -62,8 +64,43 @@ def player_box_features(player_box):
     return player_box
 
 
+def reduce_mem_usage(df, verbose=True):
+    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+    start_mem = df.memory_usage().sum() / 1024**2
+    for col in df.columns:
+        col_type = df[col].dtypes
+        if col_type in numerics:
+            c_min = df[col].min()
+            c_max = df[col].max()
+            if str(col_type)[:3] == 'int':
+                if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
+                    df[col] = df[col].astype(np.int16)
+                elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
+                    df[col] = df[col].astype(np.int32)
+                elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+                    df[col] = df[col].astype(np.int64)
+                elif c_min > np.iinfo(np.int64).min and c_max < np.iinfo(np.int64).max:
+                    df[col] = df[col].astype(np.int64)
+            else:
+                if c_min > np.finfo(np.float16).min and c_max < np.finfo(np.float16).max:
+                    df[col] = df[col].astype(np.float32)
+                elif c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+                    df[col] = df[col].astype(np.float64)
+                else:
+                    df[col] = df[col].astype(np.float64)
+    end_mem = df.memory_usage().sum() / 1024**2
+    if verbose:
+        print('Mem. usage decreased to {:5.2f} Mb ({:.1f}% reduction)'.format(end_mem, 100 * (start_mem - end_mem) / start_mem))
+    return df
+
+
+def saved_merged(merged):
+    merged.to_pickle('mlb-merged-data/merged.pkl')
+
+
 def main():
-    merge_features()
+    merged = compute_merge_features()
+    saved_merged(merged)
 
 
 if __name__ == '__main__':
