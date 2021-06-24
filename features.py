@@ -3,7 +3,7 @@ import pandas as pd
 import time
 
 
-def compute_merge_features():
+def compute_all_merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     # print(next_days.head())
@@ -11,14 +11,20 @@ def compute_merge_features():
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
+    return compute_merge_features(next_days, player_box)
+
+
+# Put this in the Notebook!
+def compute_merge_features(next_days, player_box):
     player_box = player_box_features(player_box)
-    # player_box = player_box.drop_duplicates(['playerId', 'date'], keep='first')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
+    # merged = player_box
     merged = merged.fillna(0)
-    merged = reduce_mem_usage(merged)
+    # merged = reduce_mem_usage(merged)
     return merged
 
 
+# Put this in the Notebook!
 def player_box_features(player_box):
     # per gamePk, add up features for each playerId, date
     # playerName is constant
@@ -64,7 +70,7 @@ def player_box_features(player_box):
     return player_box
 
 
-def reduce_mem_usage(df, verbose=True):
+def reduce_mem_usage(df, verbose=False):
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
     start_mem = df.memory_usage().sum() / 1024**2
     for col in df.columns:
@@ -99,7 +105,7 @@ def saved_merged(merged):
 
 
 def main():
-    merged = compute_merge_features()
+    merged = compute_all_merge_features()
     saved_merged(merged)
 
 

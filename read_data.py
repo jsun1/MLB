@@ -14,6 +14,7 @@ def read_train():
                            usecols=['date', 'transactions', 'standings', 'awards', 'events', 'playerTwitterFollowers',
                                     'teamTwitterFollowers'])
     # date is a unique key
+    #TODO: is setting the date to a datetime needed?
     training['date'] = pd.to_datetime(training['date'], format='%Y%m%d')
     print(training.shape)
     print(training.columns)
@@ -28,13 +29,16 @@ def read_train():
     columns = training.columns
     for column in columns:
         if column != 'date':
-            save_not_nested(training, column)
+            un_nested_form = un_nest(training, column)
+            un_nested_form.to_pickle('mlb-processed-data/' + column + '.pkl')
 
 
-def save_not_nested(training, field):
+# Put this in the Notebook!
+def un_nest(full_data, field):
     # create the data frame (un nested) for each field
-    next_day_training = training[['date', field]]
+    next_day_training = full_data[['date', field]]
     next_days = pd.DataFrame()
+    #TODO: use apply to read json faster?
     for tuple in next_day_training.itertuples(index=False):
         date = tuple[0]
         next_day_string = tuple[1]
@@ -46,8 +50,7 @@ def save_not_nested(training, field):
             next_days = next_days.append(next_day)
         else:
             assert(math.isnan(next_day_string))
-    print(field, next_days.shape)
-    next_days.to_pickle('mlb-processed-data/' + field + '.pkl')
+    return next_days
 
 
 def read_pickles():

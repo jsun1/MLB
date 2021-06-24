@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
+# Put this model in the Notebook!
 class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
         super(LinearRegression, self).__init__()
@@ -45,10 +46,22 @@ class Net(nn.Module):
         return x
 
 
+# Put this in the Notebook!
+def model_inputs(merged):
+    inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
+    return inputs
+
+
+# Put this in the Notebook!
+def make_model():
+    model = LinearRegression(76, 4, 100)
+    return model
+
+
 def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    x_train = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
+    x_train = model_inputs(merged)
     # x_train = merged[['caughtStealing', 'sacBunts']].to_numpy(dtype=np.float32)
     # print(len(x_values[0]))
 
@@ -67,15 +80,14 @@ def main():
     # y_train = y_train.reshape(-1, 1)
     # print(x_train.shape, y_train.shape)
 
-    inputDim = 76  # takes variable 'x'
-    outputDim = 4  # takes variable 'y'
     learningRate = 0.00001
-    epochs = 100  # 2506176
+    epochs = 10
 
-    model = LinearRegression(inputDim, outputDim, 100)
+    model = make_model()
 
     criterion = torch.nn.MSELoss()  # TODO: figure out what this loss means (26.?)
     optimizer = torch.optim.SGD(model.parameters(), lr=learningRate)
+    print('TYPE', type(model), type(x_train))
 
     for epoch in range(epochs):
         # Converting inputs and labels to Variable
@@ -102,7 +114,6 @@ def main():
     print('epoch {}, loss {}'.format(epoch, loss.item()))
     # TODO: internally validate the model
 
-    # TODO: save the model and run a submission
     # save the model
     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     torch.save(model.state_dict(), 'saved-models/' + date + '.pt')
