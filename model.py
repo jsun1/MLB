@@ -86,11 +86,17 @@ def make_model():
 def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    x_train = model_inputs(merged)
+    split_date = pd.to_datetime('2021-02-01')
+    merged_train = merged.loc[merged.date < split_date]
+    merged_val = merged.loc[merged.date >= split_date]
+    x_train = model_inputs(merged_train)
+    x_val = model_inputs(merged_val)
+
     # x_train = merged[['caughtStealing', 'sacBunts']].to_numpy(dtype=np.float32)
     # print(len(x_values[0]))
 
-    y_train = merged[['target1', 'target2', 'target3', 'target4']].to_numpy(dtype=np.float32)
+    y_train = merged_train[['target1', 'target2', 'target3', 'target4']].to_numpy(dtype=np.float32)
+    y_val = merged_val[['target1', 'target2', 'target3', 'target4']].to_numpy(dtype=np.float32)
     # y_train = y_train.reshape(-1, 4)
     print('x_train type', type(x_train), x_train.shape, y_train.shape)
     # y_values = merged['target1']
@@ -110,7 +116,7 @@ def main():
 
     model = make_model()
 
-    criterion = CustomLoss()  # torch.nn.MSELoss()  # TODO: figure out what this loss means (26.?)
+    criterion = CustomLoss()  # torch.nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learningRate)
     print('TYPE', type(model), type(x_train))
 
@@ -131,9 +137,14 @@ def main():
         loss = criterion(outputs, labels)
 
         # Get the evaluation metric
-        if epoch % 5 == 4:
+        if epoch % 5 == 4 or True:
             metric = np.mean(np.mean(np.absolute(outputs.detach().numpy() - labels.detach().numpy()), axis=0))
-            print('metric', metric)
+            # Validation
+            inputs_val = Variable(torch.from_numpy(x_val))
+            labels_val = Variable(torch.from_numpy(y_val))
+            outputs_val = model(inputs_val)
+            metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
+            print('metric', metric, metric_val)
 
         # print(loss)
         # get gradients w.r.t to parameters
