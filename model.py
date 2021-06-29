@@ -12,23 +12,30 @@ from torch.autograd import Variable
 class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
         super(LinearRegression, self).__init__()
+        drop_p = 0.5
         self.batch = nn.LayerNorm(inputSize)
+        self.dropout = nn.Dropout(p=drop_p)
         self.linear = nn.Linear(inputSize, hidden_size)
         self.relu = nn.ReLU()
         self.batch1 = nn.LayerNorm(hidden_size)
+        self.dropout1 = nn.Dropout(p=drop_p)
         self.linear1 = nn.Linear(hidden_size, hidden_size)
         self.batch2 = nn.LayerNorm(hidden_size)
         # self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.dropout2 = nn.Dropout(p=drop_p)
         self.hidden = nn.Linear(hidden_size, outputSize)
 
     def forward(self, x):
         out = self.batch(x)
+        out = self.dropout(out)
         out = self.linear(out)
         out = self.relu(out)
         out = self.batch1(out)
+        out = self.dropout1(out)
         out = self.linear1(out)
         out = self.relu(out)
         out = self.batch2(out)
+        out = self.dropout2(out)
         # out = self.linear2(out)
         out = self.hidden(out)
         return out
@@ -111,13 +118,14 @@ def main():
     # y_train = y_train.reshape(-1, 1)
     # print(x_train.shape, y_train.shape)
 
-    learningRate = 0.00003
-    epochs = 50# 300
+    learningRate = 0.0001
+    epochs = 300# 300
 
     model = make_model()
+    model.train()
 
     criterion = CustomLoss()  # torch.nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learningRate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
     print('TYPE', type(model), type(x_train))
 
     for epoch in range(epochs):
@@ -137,7 +145,8 @@ def main():
         loss = criterion(outputs, labels)
 
         # Get the evaluation metric
-        if epoch % 5 == 4 or True:
+        if epoch % 5 == 4:
+            model.eval()
             metric = np.mean(np.mean(np.absolute(outputs.detach().numpy() - labels.detach().numpy()), axis=0))
             # Validation
             inputs_val = Variable(torch.from_numpy(x_val))
@@ -145,6 +154,7 @@ def main():
             outputs_val = model(inputs_val)
             metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
             print('metric', metric, metric_val)
+            model.train()
 
         # print(loss)
         # get gradients w.r.t to parameters
@@ -155,7 +165,6 @@ def main():
 
     # print(loss.item())
     # print('epoch {}, loss {}'.format(epoch, np.sqrt(loss.item())))
-    # TODO: internally validate the model
 
     # save the model
     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
