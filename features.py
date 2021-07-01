@@ -6,18 +6,20 @@ import time
 def compute_all_merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    pre_agg = pd.read_pickle('mlb-merged-data/pre.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box)
+    return compute_merge_features(next_days, player_box, pre_agg)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box):
+def compute_merge_features(next_days, player_box, pre_agg):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
+    merged = merged.merge(pre_agg, on=['date', 'playerId'])
     # merged = player_box
     merged = merged.fillna(0)
     merged = reduce_mem_usage(merged)
@@ -197,7 +199,7 @@ def saved_merged(merged):
 def main():
     # compute_pre_features()
     merged = compute_all_merge_features()
-    # saved_merged(merged)
+    saved_merged(merged)
 
 
 if __name__ == '__main__':
