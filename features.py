@@ -19,8 +19,7 @@ def compute_all_merge_features():
 def compute_merge_features(next_days, player_box, pre_agg):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
-    merged = merged.merge(pre_agg, on=['date', 'playerId'])
-    # merged = player_box
+    merged = merge_pre_agg(merged, pre_agg)
     merged = merged.fillna(0)
     merged = reduce_mem_usage(merged)
     return merged
@@ -72,11 +71,27 @@ def player_box_features(player_box):
     return player_box
 
 
+# Put this in the Notebook!
+def merge_pre_agg(merged, pre_agg):
+    # From the pre.pkl aggregations, compute just the final values
+    training = True
+    if training:
+        # In training, use all values
+        merged = merged.merge(pre_agg, on=['date', 'playerId'])
+    else:
+        # In testing, use only final values
+        # Compute a lookup data frame which can be merged via playerId
+        lookup = pre_agg.groupby(['playerId']).last().drop(['date'], 1).reset_index()
+        merged = merged.merge(lookup, on=['playerId'], how='left')
+    return merged
+
+
 # Computes features that we pre-compute and load into the notebook pre-inference
 def compute_pre_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     next_days_use = next_days.copy()
     # next_days_use = next_days_use[next_days_use['date'] < '2018-06-01']
+    #TODO: include have_game or not
     # Convert the date to numeric so it can be passed into group-by
     next_days_use['date'] = pd.to_numeric(next_days_use['date'])
     # Aggregate the cumulative means of the targets, grouped by playerId
@@ -100,7 +115,7 @@ def compute_pre_features():
     print(agg_targets.shape)
     agg_targets = agg_targets[['date', 'playerId', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean']]
     agg_targets = reduce_mem_usage(agg_targets)
-    agg_targets.to_pickle('mlb-merged-data/pre.pkl')
+    agg_targets.to_pickle('mlb-merged-data/pre.pkl', protocol=4)
     return agg_targets
 
 
@@ -193,13 +208,13 @@ def reduce_mem_usage(df, verbose=False):
 
 
 def saved_merged(merged):
-    merged.to_pickle('mlb-merged-data/merged.pkl')
+    merged.to_pickle('mlb-merged-data/merged.pkl', protocol=4)
 
 
 def main():
-    # compute_pre_features()
-    merged = compute_all_merge_features()
-    saved_merged(merged)
+    compute_pre_features()
+    # merged = compute_all_merge_features()
+    # saved_merged(merged)
 
 
 if __name__ == '__main__':

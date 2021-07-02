@@ -21,8 +21,10 @@ class LinearRegression(torch.nn.Module):
         self.dropout1 = nn.Dropout(p=drop_p)
         self.linear1 = nn.Linear(hidden_size, hidden_size)
         self.batch2 = nn.LayerNorm(hidden_size)
-        # self.linear2 = nn.Linear(hidden_size, hidden_size)
         self.dropout2 = nn.Dropout(p=drop_p)
+        # self.linear2 = nn.Linear(hidden_size, hidden_size)
+        # self.batch3 = nn.LayerNorm(hidden_size)
+        # self.dropout3 = nn.Dropout(p=drop_p)
         self.hidden = nn.Linear(hidden_size, outputSize)
 
     def forward(self, x):
@@ -37,6 +39,9 @@ class LinearRegression(torch.nn.Module):
         out = self.batch2(out)
         out = self.dropout2(out)
         # out = self.linear2(out)
+        # out = self.relu(out)
+        # out = self.batch3(out)
+        # out = self.dropout3(out)
         out = self.hidden(out)
         return out
 
@@ -50,7 +55,8 @@ class CustomLoss(torch.nn.Module):
         metric = torch.mean(torch.abs(outputs - labels), 0)
         # print(metric.detach().numpy())
         metric = torch.mean(metric)
-        return torch.square(metric)
+        # return torch.square(metric)
+        return metric
 
 
 class Net(nn.Module):
@@ -86,7 +92,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(76, 4, 256)
+    model = LinearRegression(80, 4, 128)
     return model
 
 
@@ -119,7 +125,7 @@ def main():
     # print(x_train.shape, y_train.shape)
 
     learningRate = 0.0001
-    epochs = 300# 300
+    epochs = 300
 
     model = make_model()
     model.train()
@@ -153,7 +159,7 @@ def main():
             labels_val = Variable(torch.from_numpy(y_val))
             outputs_val = model(inputs_val)
             metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
-            print('metric', metric, metric_val)
+            print('metric', loss.item(), metric, metric_val)
             model.train()
 
         # print(loss)
