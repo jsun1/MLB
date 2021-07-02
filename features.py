@@ -6,7 +6,7 @@ import time
 def compute_all_merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
-    pre_agg = pd.read_pickle('mlb-merged-data/pre.pkl')
+    pre_agg = pd.read_pickle('mlb-merged-data/pre_train.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
@@ -73,31 +73,39 @@ def player_box_features(player_box):
 
 # Put this in the Notebook!
 def merge_pre_agg(merged, pre_agg):
-    #TODO: this will miss games that were played on the last day of training!
-    # From the pre.pkl aggregations, compute just the final values
+    # From the pre_train/test.pkl aggregations, compute just the final values
     training = True
     if training:
         # In training, use all values
         merged = merged.merge(pre_agg, on=['date', 'playerId'])
     else:
         # In testing, use only final values
-        # Compute a lookup data frame which can be merged via playerId
-        lookup = pre_agg.groupby(['playerId']).last().drop(['date'], 1).reset_index()
-        merged = merged.merge(lookup, on=['playerId'], how='left')
+        # Assume pre_agg is a lookup data frame which can be merged via playerId
+        merged = merged.merge(pre_agg, on=['playerId'], how='left')
+    # Use the yes/no game target depending on numGames
+    merged['target1_game'] = np.where(merged['numGames'] == 0, merged['target1_no_game'],
+                                      merged['target1_yes_game'])
+    merged['target2_game'] = np.where(merged['numGames'] == 0, merged['target2_no_game'],
+                                      merged['target2_yes_game'])
+    merged['target3_game'] = np.where(merged['numGames'] == 0, merged['target3_no_game'],
+                                      merged['target3_yes_game'])
+    merged['target4_game'] = np.where(merged['numGames'] == 0, merged['target4_no_game'],
+                                      merged['target4_yes_game'])
+    merged = merged.drop(['target1_yes_game', 'target2_yes_game', 'target3_yes_game', 'target4_yes_game',
+                          'target1_no_game', 'target2_no_game', 'target3_no_game', 'target4_no_game'], 1)
     return merged
 
 
 # Computes features that we pre-compute and load into the notebook pre-inference
-def compute_pre_features():
+def compute_pre_features(training=True):
     next_days_orig = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)
-    next_days = merged[['date', 'playerId', 'numGames', 'target1', 'target2', 'target3', 'target4']]
-    # next_days = next_days_orig.copy()
+    next_days = merged[['date', 'playerId', 'numGames', 'target1', 'target2', 'target3', 'target4']].copy()
     # next_days_use = next_days_use[next_days_use['date'] < '2018-06-01']
     # Convert the date to numeric so it can be passed into group-by
-    next_days = next_days.assign(date=pd.to_numeric(next_days['date']))
+    next_days['date'] = pd.to_numeric(next_days['date'])  # next_days = next_days.assign(date=pd.to_numeric(next_days['date']))
     next_days['target1_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target1'])
     next_days['target2_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target2'])
     next_days['target3_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target3'])
@@ -107,35 +115,43 @@ def compute_pre_features():
     next_days['target3_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target3'])
     next_days['target4_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target4'])
 
-    # Aggregate the cumulative means of the targets, grouped by playerId
-    agg = {'date': lambda x: x.values[-1],  # this is for keeping date. it takes the longest time
-           'playerId': 'min',
-           'target1': 'mean', 'target2': 'mean', 'target3': 'mean', 'target4': 'mean',
-           'target1_yes_game': 'mean', 'target2_yes_game': 'mean', 'target3_yes_game': 'mean', 'target4_yes_game': 'mean',
-           'target1_no_game': 'mean', 'target2_no_game': 'mean', 'target3_no_game': 'mean', 'target4_no_game': 'mean'
-           }
-    agg_targets = next_days.groupby(['playerId']).expanding().agg(agg).reset_index(drop=True)
+    if training:
+        # Aggregate the cumulative means of the targets, grouped by playerId
+        agg = {'date': lambda x: x.values[-1],  # this is for keeping date. it takes the longest time
+               'playerId': 'min',
+               'target1': 'mean', 'target2': 'mean', 'target3': 'mean', 'target4': 'mean',
+               'target1_yes_game': 'mean', 'target2_yes_game': 'mean', 'target3_yes_game': 'mean', 'target4_yes_game': 'mean',
+               'target1_no_game': 'mean', 'target2_no_game': 'mean', 'target3_no_game': 'mean', 'target4_no_game': 'mean'
+               }
+        agg_targets = next_days.groupby(['playerId']).expanding().agg(agg).reset_index(drop=True)
 
-    # Shift the targets down by 1, because we can't use the target on its own day (only from previous days)
-    shifted = agg_targets.drop(['date'], 1).groupby(['playerId']).shift(1).fillna(0)
-    agg_targets[['target1', 'target2', 'target3', 'target4',
-                 'target1_yes_game', 'target2_yes_game', 'target3_yes_game', 'target4_yes_game',
-                 'target1_no_game', 'target2_no_game', 'target3_no_game', 'target4_no_game'
-                 ]] = shifted
-    # Convert the date back to date-time
-    agg_targets['date'] = pd.to_datetime(agg_targets['date'])
-    # Rename the columns
-    agg_targets = agg_targets.rename(columns={'target1': 'target1_mean', 'target2': 'target2_mean', 'target3': 'target3_mean', 'target4': 'target4_mean'})
-    # Merge to sort it back in order
-    agg_targets = next_days_orig.merge(agg_targets, on=['date', 'playerId'])
-    print(next_days.shape)
-    print(agg_targets.shape)
-    # agg_targets = agg_targets[['date', 'playerId', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean']]
-    agg_targets = agg_targets.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4'], 1)
+        # Shift the targets down by 1, because we can't use the target on its own day (only from previous days)
+        shifted = agg_targets.drop(['date'], 1).groupby(['playerId']).shift(1).fillna(0)
+        agg_targets[['target1', 'target2', 'target3', 'target4',
+                     'target1_yes_game', 'target2_yes_game', 'target3_yes_game', 'target4_yes_game',
+                     'target1_no_game', 'target2_no_game', 'target3_no_game', 'target4_no_game'
+                     ]] = shifted
+        # Convert the date back to date-time
+        agg_targets['date'] = pd.to_datetime(agg_targets['date'])
+        # Rename the columns
+        agg_targets = agg_targets.rename(columns={'target1': 'target1_mean', 'target2': 'target2_mean', 'target3': 'target3_mean', 'target4': 'target4_mean'})
+        # Merge to sort it back in order
+        agg_targets = next_days_orig.merge(agg_targets, on=['date', 'playerId'])
+        print(next_days.shape)
+        print(agg_targets.shape)
+        agg_targets = agg_targets.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4'], 1)
+    else:
+        agg_targets = next_days.groupby(['playerId']).mean().drop(['date', 'numGames'], 1).reset_index()
+        # Rename the columns
+        agg_targets = agg_targets.rename(
+            columns={'target1': 'target1_mean', 'target2': 'target2_mean', 'target3': 'target3_mean',
+                     'target4': 'target4_mean'})
+        print(agg_targets.shape)
     print(agg_targets.head())
     print(agg_targets.tail())
     agg_targets = reduce_mem_usage(agg_targets)
-    agg_targets.to_pickle('mlb-merged-data/pre.pkl', protocol=4)
+    save_name = 'mlb-merged-data/pre_train.pkl' if training else 'mlb-merged-data/pre_test.pkl'
+    agg_targets.to_pickle(save_name, protocol=4)
     return agg_targets
 
 
@@ -228,13 +244,13 @@ def reduce_mem_usage(df, verbose=False):
 
 
 def saved_merged(merged):
-    merged.to_pickle('mlb-merged-data/merged.pkl', protocol=4)
+    merged.to_pickle('mlb-merged-data/merged.pkl', protocol=5)
 
 
 def main():
-    compute_pre_features()
-    # merged = compute_all_merge_features()
-    # saved_merged(merged)
+    # compute_pre_features(False)
+    merged = compute_all_merge_features()
+    saved_merged(merged)
 
 
 if __name__ == '__main__':

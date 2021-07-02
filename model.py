@@ -26,23 +26,28 @@ class LinearRegression(torch.nn.Module):
         # self.batch3 = nn.LayerNorm(hidden_size)
         # self.dropout3 = nn.Dropout(p=drop_p)
         self.hidden = nn.Linear(hidden_size, outputSize)
+        # self.leaky_relu = nn.LeakyReLU(negative_slope=0.1)
 
     def forward(self, x):
-        out = self.batch(x)
-        out = self.dropout(out)
-        out = self.linear(out)
-        out = self.relu(out)
-        out = self.batch1(out)
+        # out = self.batch(x)
+        # out = self.dropout(out)
+        out = self.linear(x)  # changed out to x
+        # out = self.relu(out)
+        # out = self.batch1(out)
         out = self.dropout1(out)
-        out = self.linear1(out)
-        out = self.relu(out)
-        out = self.batch2(out)
-        out = self.dropout2(out)
+
+        # out = self.linear1(out)
+        # out = self.relu(out)
+        # out = self.batch2(out)
+        # out = self.dropout2(out)
+
         # out = self.linear2(out)
         # out = self.relu(out)
         # out = self.batch3(out)
         # out = self.dropout3(out)
         out = self.hidden(out)
+        out = self.relu(out)
+        # out = self.leaky_relu(out)
         return out
 
 
@@ -92,7 +97,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(80, 4, 128)
+    model = LinearRegression(84, 4, 128)
     return model
 
 
@@ -100,7 +105,8 @@ def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-02-01')
-    merged_train = merged.loc[merged.date < split_date]
+    # merged_train = merged.loc[merged.date < split_date]
+    merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
@@ -125,7 +131,7 @@ def main():
     # print(x_train.shape, y_train.shape)
 
     learningRate = 0.0001
-    epochs = 300
+    epochs = 600
 
     model = make_model()
     model.train()
@@ -159,7 +165,7 @@ def main():
             labels_val = Variable(torch.from_numpy(y_val))
             outputs_val = model(inputs_val)
             metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
-            print('metric', loss.item(), metric, metric_val)
+            print('metric', epoch, loss.item(), metric, metric_val)
             model.train()
 
         # print(loss)
