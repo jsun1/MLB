@@ -19,8 +19,8 @@ def compute_all_merge_features():
 def compute_merge_features(next_days, player_box, pre_agg):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
-    merged = merge_pre_agg(merged, pre_agg)
     merged = merged.fillna(0)
+    merged = merge_pre_agg(merged, pre_agg)
     merged = reduce_mem_usage(merged)
     return merged
 
@@ -75,6 +75,7 @@ def player_box_features(player_box):
 def merge_pre_agg(merged, pre_agg):
     # From the pre_train/test.pkl aggregations, compute just the final values
     training = True
+    assert(merged['numGames'].isna().sum() == 0)
     if training:
         # In training, use all values
         merged = merged.merge(pre_agg, on=['date', 'playerId'])

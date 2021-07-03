@@ -32,8 +32,8 @@ class LinearRegression(torch.nn.Module):
         # out = self.batch(x)
         # out = self.dropout(out)
         out = self.linear(x)  # changed out to x
-        # out = self.relu(out)
-        # out = self.batch1(out)
+        out = self.relu(out)
+        out = self.batch1(out)
         out = self.dropout1(out)
 
         # out = self.linear1(out)
@@ -130,8 +130,8 @@ def main():
     # y_train = y_train.reshape(-1, 1)
     # print(x_train.shape, y_train.shape)
 
-    learningRate = 0.0001
-    epochs = 600
+    learningRate = 0.0002
+    epochs = 125
 
     model = make_model()
     model.train()
