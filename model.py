@@ -105,8 +105,8 @@ def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-02-01')
-    # merged_train = merged.loc[merged.date < split_date]
-    merged_train = merged  # train on all data
+    merged_train = merged.loc[merged.date < split_date]
+    # merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
@@ -130,8 +130,8 @@ def main():
     # y_train = y_train.reshape(-1, 1)
     # print(x_train.shape, y_train.shape)
 
-    learningRate = 0.0002
-    epochs = 125
+    learningRate = 0.0003
+    epochs = 100
 
     model = make_model()
     model.train()
