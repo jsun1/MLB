@@ -13,15 +13,15 @@ class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
         super(LinearRegression, self).__init__()
         drop_p = 0.5
-        self.batch = nn.LayerNorm(inputSize)
-        self.dropout = nn.Dropout(p=drop_p)
+        # self.batch = nn.LayerNorm(inputSize)
+        # self.dropout = nn.Dropout(p=drop_p)
         self.linear = nn.Linear(inputSize, hidden_size)
         self.relu = nn.ReLU()
         self.batch1 = nn.LayerNorm(hidden_size)
         self.dropout1 = nn.Dropout(p=drop_p)
-        self.linear1 = nn.Linear(hidden_size, hidden_size)
-        self.batch2 = nn.LayerNorm(hidden_size)
-        self.dropout2 = nn.Dropout(p=drop_p)
+        # self.linear1 = nn.Linear(hidden_size, hidden_size)
+        # self.batch2 = nn.LayerNorm(hidden_size)
+        # self.dropout2 = nn.Dropout(p=drop_p)
         # self.linear2 = nn.Linear(hidden_size, hidden_size)
         # self.batch3 = nn.LayerNorm(hidden_size)
         # self.dropout3 = nn.Dropout(p=drop_p)
@@ -97,14 +97,14 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(84, 4, 128)
+    model = LinearRegression(92, 4, 128)
     return model
 
 
 def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    split_date = pd.to_datetime('2021-02-01')
+    split_date = pd.to_datetime('2021-04-01')
     merged_train = merged.loc[merged.date < split_date]
     # merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
@@ -130,8 +130,8 @@ def main():
     # y_train = y_train.reshape(-1, 1)
     # print(x_train.shape, y_train.shape)
 
-    learningRate = 0.0003
-    epochs = 100
+    learningRate = 0.003
+    epochs = 300
 
     model = make_model()
     model.train()
@@ -165,7 +165,7 @@ def main():
             labels_val = Variable(torch.from_numpy(y_val))
             outputs_val = model(inputs_val)
             metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
-            print('metric', epoch, loss.item(), metric, metric_val)
+            print('metric', epoch + 1, loss.item(), metric, metric_val)
             model.train()
 
         # print(loss)

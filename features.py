@@ -12,15 +12,15 @@ def compute_all_merge_features():
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box, pre_agg)
+    return compute_merge_features(next_days, player_box, pre_agg, True)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box, pre_agg):
+def compute_merge_features(next_days, player_box, pre_agg, training):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
-    merged = merged.fillna(0)
-    merged = merge_pre_agg(merged, pre_agg)
+    merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    merged = merge_pre_agg(merged, pre_agg, training)
     merged = reduce_mem_usage(merged)
     return merged
 
@@ -72,28 +72,45 @@ def player_box_features(player_box):
 
 
 # Put this in the Notebook!
-def merge_pre_agg(merged, pre_agg):
+def merge_pre_agg(merged, pre_agg, training):
     # From the pre_train/test.pkl aggregations, compute just the final values
-    training = True
     assert(merged['numGames'].isna().sum() == 0)
+    m_shape = merged.shape
     if training:
         # In training, use all values
         merged = merged.merge(pre_agg, on=['date', 'playerId'])
     else:
         # In testing, use only final values
+        # Account for unknown players
+        # TODO: this still gives nan on submission
+        is_known = merged['playerId'].isin(pre_agg['playerId'])
+        new_players = pd.DataFrame(is_known, columns=['playerId']).rename(columns={'playerId': 'is_known'})
+        new_players['playerId'] = merged['playerId']
+        new_players = new_players[(new_players['is_known'] == False)].drop(['is_known'], 1).reset_index(drop=True)
+        lookup = pre_agg
+        if new_players.shape[0] > 0:
+            # If there are new players, add the unknown player template to the lookup
+            unknown = pre_agg[pre_agg['playerId'] == -1].reset_index(drop=True).copy()
+            unknown = unknown.loc[unknown.index.repeat(new_players.shape[0])].reset_index(drop=True)
+            unknown['playerId'] = new_players['playerId']
+            lookup = lookup.append(unknown, ignore_index=True)
         # Assume pre_agg is a lookup data frame which can be merged via playerId
-        merged = merged.merge(pre_agg, on=['playerId'], how='left')
+        merged = merged.merge(lookup, on=['playerId'], how='left')
     # Use the yes/no game target depending on numGames
-    merged['target1_game'] = np.where(merged['numGames'] == 0, merged['target1_no_game'],
-                                      merged['target1_yes_game'])
-    merged['target2_game'] = np.where(merged['numGames'] == 0, merged['target2_no_game'],
-                                      merged['target2_yes_game'])
-    merged['target3_game'] = np.where(merged['numGames'] == 0, merged['target3_no_game'],
-                                      merged['target3_yes_game'])
-    merged['target4_game'] = np.where(merged['numGames'] == 0, merged['target4_no_game'],
-                                      merged['target4_yes_game'])
-    merged = merged.drop(['target1_yes_game', 'target2_yes_game', 'target3_yes_game', 'target4_yes_game',
-                          'target1_no_game', 'target2_no_game', 'target3_no_game', 'target4_no_game'], 1)
+    merged['target1_game'] = np.where(merged['numGames'] == 0, merged['target1_n_game'], merged['target1_y_game'])
+    merged['target2_game'] = np.where(merged['numGames'] == 0, merged['target2_n_game'], merged['target2_y_game'])
+    merged['target3_game'] = np.where(merged['numGames'] == 0, merged['target3_n_game'], merged['target3_y_game'])
+    merged['target4_game'] = np.where(merged['numGames'] == 0, merged['target4_n_game'], merged['target4_y_game'])
+    merged['target1_game_mean'] = np.where(merged['numGames'] == 0, merged['target1_n_game_mean'], merged['target1_y_game_mean'])
+    merged['target2_game_mean'] = np.where(merged['numGames'] == 0, merged['target2_n_game_mean'], merged['target2_y_game_mean'])
+    merged['target3_game_mean'] = np.where(merged['numGames'] == 0, merged['target3_n_game_mean'], merged['target3_y_game_mean'])
+    merged['target4_game_mean'] = np.where(merged['numGames'] == 0, merged['target4_n_game_mean'], merged['target4_y_game_mean'])
+    merged = merged.drop(['target1_y_game', 'target2_y_game', 'target3_y_game', 'target4_y_game',
+                          'target1_n_game', 'target2_n_game', 'target3_n_game', 'target4_n_game',
+                          'target1_y_game_mean', 'target2_y_game_mean', 'target3_y_game_mean', 'target4_y_game_mean',
+                          'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
+                          ], 1)
+    assert(merged.shape[0] == m_shape[0])
     return merged
 
 
@@ -102,52 +119,90 @@ def compute_pre_features(training=True):
     next_days_orig = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
-    merged = merged.fillna(0)
+    merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
     next_days = merged[['date', 'playerId', 'numGames', 'target1', 'target2', 'target3', 'target4']].copy()
     # next_days_use = next_days_use[next_days_use['date'] < '2018-06-01']
     # Convert the date to numeric so it can be passed into group-by
     next_days['date'] = pd.to_numeric(next_days['date'])  # next_days = next_days.assign(date=pd.to_numeric(next_days['date']))
-    next_days['target1_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target1'])
-    next_days['target2_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target2'])
-    next_days['target3_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target3'])
-    next_days['target4_yes_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target4'])
-    next_days['target1_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target1'])
-    next_days['target2_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target2'])
-    next_days['target3_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target3'])
-    next_days['target4_no_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target4'])
+    next_days[['target1_med', 'target2_med', 'target3_med', 'target4_med']] = next_days[['target1', 'target2', 'target3', 'target4']]
+    next_days[['target1_mean', 'target2_mean', 'target3_mean', 'target4_mean']] = next_days[['target1', 'target2', 'target3', 'target4']]
+    next_days['target1_y_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target1'])
+    next_days['target2_y_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target2'])
+    next_days['target3_y_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target3'])
+    next_days['target4_y_game'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target4'])
+    next_days['target1_n_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target1'])
+    next_days['target2_n_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target2'])
+    next_days['target3_n_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target3'])
+    next_days['target4_n_game'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target4'])
+    next_days['target1_y_game_mean'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target1'])
+    next_days['target2_y_game_mean'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target2'])
+    next_days['target3_y_game_mean'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target3'])
+    next_days['target4_y_game_mean'] = np.where(next_days['numGames'] == 0, np.nan, next_days['target4'])
+    next_days['target1_n_game_mean'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target1'])
+    next_days['target2_n_game_mean'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target2'])
+    next_days['target3_n_game_mean'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target3'])
+    next_days['target4_n_game_mean'] = np.where(next_days['numGames'] > 0, np.nan, next_days['target4'])
 
     if training:
         # Aggregate the cumulative means of the targets, grouped by playerId
         agg = {'date': lambda x: x.values[-1],  # this is for keeping date. it takes the longest time
                'playerId': 'min',
-               'target1': 'mean', 'target2': 'mean', 'target3': 'mean', 'target4': 'mean',
-               'target1_yes_game': 'mean', 'target2_yes_game': 'mean', 'target3_yes_game': 'mean', 'target4_yes_game': 'mean',
-               'target1_no_game': 'mean', 'target2_no_game': 'mean', 'target3_no_game': 'mean', 'target4_no_game': 'mean'
+               'target1_med': 'median', 'target2_med': 'median', 'target3_med': 'median', 'target4_med': 'median',
+               'target1_mean': 'mean', 'target2_mean': 'mean', 'target3_mean': 'mean', 'target4_mean': 'mean',
+               'target1_y_game': 'median', 'target2_y_game': 'median', 'target3_y_game': 'median', 'target4_y_game': 'median',
+               'target1_n_game': 'median', 'target2_n_game': 'median', 'target3_n_game': 'median', 'target4_n_game': 'median',
+               'target1_y_game_mean': 'mean', 'target2_y_game_mean': 'mean', 'target3_y_game_mean': 'mean', 'target4_y_game_mean': 'mean',
+               'target1_n_game_mean': 'mean', 'target2_n_game_mean': 'mean', 'target3_n_game_mean': 'mean', 'target4_n_game_mean': 'mean'
                }
         agg_targets = next_days.groupby(['playerId']).expanding().agg(agg).reset_index(drop=True)
 
         # Shift the targets down by 1, because we can't use the target on its own day (only from previous days)
+        # TODO: instead of fillna(0), use the unknown player's mean/medians
         shifted = agg_targets.drop(['date'], 1).groupby(['playerId']).shift(1).fillna(0)
-        agg_targets[['target1', 'target2', 'target3', 'target4',
-                     'target1_yes_game', 'target2_yes_game', 'target3_yes_game', 'target4_yes_game',
-                     'target1_no_game', 'target2_no_game', 'target3_no_game', 'target4_no_game'
+        print(shifted.columns)
+        agg_targets[['target1_med', 'target2_med', 'target3_med', 'target4_med',
+                     'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
+                     'target1_y_game', 'target2_y_game', 'target3_y_game', 'target4_y_game',
+                     'target1_n_game', 'target2_n_game', 'target3_n_game', 'target4_n_game',
+                     'target1_y_game_mean', 'target2_y_game_mean', 'target3_y_game_mean', 'target4_y_game_mean',
+                     'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
                      ]] = shifted
         # Convert the date back to date-time
         agg_targets['date'] = pd.to_datetime(agg_targets['date'])
-        # Rename the columns
-        agg_targets = agg_targets.rename(columns={'target1': 'target1_mean', 'target2': 'target2_mean', 'target3': 'target3_mean', 'target4': 'target4_mean'})
         # Merge to sort it back in order
         agg_targets = next_days_orig.merge(agg_targets, on=['date', 'playerId'])
         print(next_days.shape)
         print(agg_targets.shape)
         agg_targets = agg_targets.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4'], 1)
     else:
-        agg_targets = next_days.groupby(['playerId']).mean().drop(['date', 'numGames'], 1).reset_index()
-        # Rename the columns
-        agg_targets = agg_targets.rename(
-            columns={'target1': 'target1_mean', 'target2': 'target2_mean', 'target3': 'target3_mean',
-                     'target4': 'target4_mean'})
-        print(agg_targets.shape)
+        next_days.drop(['date', 'numGames', 'target1', 'target2', 'target3', 'target4'], 1)
+        mean_group = next_days[['playerId', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
+                                'target1_y_game_mean', 'target2_y_game_mean', 'target3_y_game_mean', 'target4_y_game_mean',
+                                'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
+                                ]]
+        median_group = next_days[['playerId', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
+                                  'target1_y_game', 'target2_y_game', 'target3_y_game', 'target4_y_game',
+                                  'target1_n_game', 'target2_n_game', 'target3_n_game', 'target4_n_game'
+                                  ]]
+        mean_group_merge = mean_group.groupby(['playerId']).mean().reset_index()
+        median_group_merge = median_group.groupby(['playerId']).median().reset_index()
+        agg_targets = mean_group_merge.merge(median_group_merge, on='playerId')
+        # Calculate the unknown player
+        mean_all = mean_group.mean()
+        mean_all.at['playerId'] = -1
+        median_all = median_group.median().drop(labels=['playerId'])
+        agg_all = pd.concat([mean_all, median_all], axis=0)
+        print('agg_all', agg_all)
+        agg_targets = agg_targets.append(agg_all, ignore_index=True)
+        # Ensure the correct order
+        agg_targets = agg_targets[['playerId', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
+                                   'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
+                                   'target1_y_game', 'target2_y_game', 'target3_y_game', 'target4_y_game',
+                                   'target1_n_game', 'target2_n_game', 'target3_n_game', 'target4_n_game',
+                                   'target1_y_game_mean', 'target2_y_game_mean', 'target3_y_game_mean', 'target4_y_game_mean',
+                                   'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
+                                   ]]
+        print(agg_targets.shape, agg_targets.columns)
     print(agg_targets.head())
     print(agg_targets.tail())
     agg_targets = reduce_mem_usage(agg_targets)
@@ -250,8 +305,13 @@ def saved_merged(merged):
 
 def main():
     # compute_pre_features(False)
-    merged = compute_all_merge_features()
-    saved_merged(merged)
+    # merged = compute_all_merge_features()
+    # saved_merged(merged)
+    # Test the test flow
+    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    pre_agg = pd.read_pickle('mlb-merged-data/pre_test.pkl')
+    compute_merge_features(next_days, player_box, pre_agg, False)
 
 
 if __name__ == '__main__':
