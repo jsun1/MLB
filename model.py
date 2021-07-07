@@ -15,9 +15,10 @@ class LinearRegression(torch.nn.Module):
         drop_p = 0.5
         # self.batch = nn.LayerNorm(inputSize)
         # self.dropout = nn.Dropout(p=drop_p)
-        self.linear = nn.Linear(inputSize, hidden_size)
-        self.relu = nn.ReLU()
-        self.batch1 = nn.LayerNorm(hidden_size)
+        self.linear = nn.Linear(inputSize, outputSize)
+        # self.tanh = nn.Tanh()
+        # self.relu = nn.ReLU()
+        # self.batch1 = nn.LayerNorm(hidden_size)
         self.dropout1 = nn.Dropout(p=drop_p)
         # self.linear1 = nn.Linear(hidden_size, hidden_size)
         # self.batch2 = nn.LayerNorm(hidden_size)
@@ -25,16 +26,17 @@ class LinearRegression(torch.nn.Module):
         # self.linear2 = nn.Linear(hidden_size, hidden_size)
         # self.batch3 = nn.LayerNorm(hidden_size)
         # self.dropout3 = nn.Dropout(p=drop_p)
-        self.hidden = nn.Linear(hidden_size, outputSize)
-        # self.leaky_relu = nn.LeakyReLU(negative_slope=0.1)
+        # self.hidden = nn.Linear(hidden_size, outputSize)
+        # self.extra = nn.Linear(4, outputSize)
+        self.leaky_relu = nn.LeakyReLU()
 
     def forward(self, x):
         # out = self.batch(x)
-        # out = self.dropout(out)
+        # out = self.dropout(x)
         out = self.linear(x)  # changed out to x
-        out = self.relu(out)
-        out = self.batch1(out)
-        out = self.dropout1(out)
+        # out = self.tanh(out)
+        # out = self.batch1(out)
+        # out = self.dropout1(out)
 
         # out = self.linear1(out)
         # out = self.relu(out)
@@ -45,9 +47,10 @@ class LinearRegression(torch.nn.Module):
         # out = self.relu(out)
         # out = self.batch3(out)
         # out = self.dropout3(out)
-        out = self.hidden(out)
-        out = self.relu(out)
-        # out = self.leaky_relu(out)
+        # out = self.hidden(out)
+        # out = self.extra(out)
+        # out = self.relu(out)
+        out = self.leaky_relu(out)
         return out
 
 
@@ -91,13 +94,14 @@ class Net(nn.Module):
 
 # Put this in the Notebook!
 def model_inputs(merged):
+    # inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4', 'year', 'dayOfWeek', 'day', 'week'], 1).to_numpy(dtype=np.float32)
     inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
     return inputs
 
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(92, 4, 128)
+    model = LinearRegression(92, 4, 64)
     return model
 
 
@@ -157,14 +161,14 @@ def main():
         loss = criterion(outputs, labels)
 
         # Get the evaluation metric
-        if epoch % 5 == 4:
+        if epoch % 10 == 9:
             model.eval()
-            metric = np.mean(np.mean(np.absolute(outputs.detach().numpy() - labels.detach().numpy()), axis=0))
+            metric = np.mean(np.mean(np.absolute(np.clip(outputs.detach().numpy(), 0, 100) - labels.detach().numpy()), axis=0))
             # Validation
             inputs_val = Variable(torch.from_numpy(x_val))
             labels_val = Variable(torch.from_numpy(y_val))
             outputs_val = model(inputs_val)
-            metric_val = np.mean(np.mean(np.absolute(outputs_val.detach().numpy() - labels_val.detach().numpy()), axis=0))
+            metric_val = np.mean(np.mean(np.absolute(np.clip(outputs_val.detach().numpy(), 0, 100) - labels_val.detach().numpy()), axis=0))
             print('metric', epoch + 1, loss.item(), metric, metric_val)
             model.train()
 

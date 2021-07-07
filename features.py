@@ -20,8 +20,36 @@ def compute_merge_features(next_days, player_box, pre_agg, training):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    # merged = merge_date_features(merged, next_days)
     merged = merge_pre_agg(merged, pre_agg, training)
-    merged = reduce_mem_usage(merged)
+    # Dataset normalization
+    not_feature = ['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4']
+    norm = merged.drop(not_feature, 1)
+    if training:
+        norm_min = norm.min()
+        norm_std = norm.std()
+        norm_min.to_pickle('mlb-merged-data/norm_min.pkl', protocol=4)
+        norm_std.to_pickle('mlb-merged-data/norm_std.pkl', protocol=4)
+    else:
+        norm_min = pd.read_pickle('../input/mlbmergeddata/norm_min.pkl')
+        norm_std = pd.read_pickle('../input/mlbmergeddata/norm_std.pkl')
+    norm = (norm - norm_min) / norm_std
+    features = [f for f in list(merged.columns) if f not in not_feature]
+    merged[features] = norm
+    # merged = reduce_mem_usage(merged)
+    return merged
+
+
+# Put this in the Notebook!
+def merge_date_features(merged, next_days):
+    dates = next_days[['date']].copy().reset_index(drop=True)
+    dates['year'] = dates['date'].dt.year.apply(lambda x: 0 if x <= 2019 else 1)
+    dates['month'] = dates['date'].dt.month
+    dates['day'] = dates['date'].dt.day
+    dates['dayOfWeek'] = dates['date'].dt.dayofweek
+    dates['week'] = dates['date'].dt.isocalendar().week
+    dates = dates.drop(['date'], 1)
+    merged[['year', 'month', 'day', 'dayOfWeek', 'week']] = dates
     return merged
 
 
@@ -305,13 +333,13 @@ def saved_merged(merged):
 
 def main():
     # compute_pre_features(False)
-    # merged = compute_all_merge_features()
-    # saved_merged(merged)
+    merged = compute_all_merge_features()
+    saved_merged(merged)
     # Test the test flow
-    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
-    player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
-    pre_agg = pd.read_pickle('mlb-merged-data/pre_test.pkl')
-    compute_merge_features(next_days, player_box, pre_agg, False)
+    # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    # player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    # pre_agg = pd.read_pickle('mlb-merged-data/pre_train.pkl')
+    # compute_merge_features(next_days, player_box, pre_agg, True)
 
 
 if __name__ == '__main__':
