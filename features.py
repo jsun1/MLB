@@ -7,20 +7,23 @@ def compute_all_merge_features():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     pre_agg = pd.read_pickle('mlb-merged-data/pre_train.pkl')
+    year = pd.read_pickle('mlb-merged-data/years.pkl')
+    month = pd.read_pickle('mlb-merged-data/months.pkl')
+    day = pd.read_pickle('mlb-merged-data/days_of_week.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box, pre_agg, True)
+    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, True)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box, pre_agg, training):
+def compute_merge_features(next_days, player_box, pre_agg, year, month, day, training):
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
-    # merged = merge_date_features(merged, next_days)
+    merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
     # Dataset normalization
     not_feature = ['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4']
@@ -41,7 +44,33 @@ def compute_merge_features(next_days, player_box, pre_agg, training):
 
 
 # Put this in the Notebook!
-def merge_date_features(merged, next_days):
+def merge_date_features(merged, year, month, day, training):
+    if not training:
+        merged['date'] = pd.to_datetime(merged['date'])
+    merged['year'] = merged['date'].dt.year
+    merged['month'] = merged['date'].dt.month
+    merged['dayOfWeek'] = merged['date'].dt.dayofweek
+    # merged = merged.merge(year, on='year', how='left')
+    # for i in ['1', '2', '3', '4']:
+    #     merged['year_tg' + i] = np.where(merged['numGames'] == 0, merged['year_tn' + i], merged['year_ty' + i])
+    merged = merged.merge(month, on='month', how='left')
+    for i in ['1', '2', '3', '4']:
+        merged['month_tg' + i] = np.where(merged['numGames'] == 0, merged['month_tn' + i], merged['month_ty' + i])
+    merged = merged.merge(day, on='dayOfWeek', how='left')
+    for i in ['1', '2', '3', '4']:
+        merged['day_tg' + i] = np.where(merged['numGames'] == 0, merged['day_tn' + i], merged['day_ty' + i])
+    to_drop = ['year', 'month', 'dayOfWeek']
+    # for name in ['year', 'month', 'day']:
+    for name in ['month', 'day']:
+        for i in ['1', '2', '3', '4']:
+            to_drop.append(name + '_ty' + i)
+            to_drop.append(name + '_tn' + i)
+    merged = merged.drop(to_drop, 1)
+    return merged
+
+
+# Add linear date features (they didn't help with the training/validation loss)
+def merge_date_features_linear(merged, next_days):
     dates = next_days[['date']].copy().reset_index(drop=True)
     dates['year'] = dates['date'].dt.year.apply(lambda x: 0 if x <= 2019 else 1)
     dates['month'] = dates['date'].dt.month
@@ -49,7 +78,10 @@ def merge_date_features(merged, next_days):
     dates['dayOfWeek'] = dates['date'].dt.dayofweek
     dates['week'] = dates['date'].dt.isocalendar().week
     dates = dates.drop(['date'], 1)
+    # merged = merged.reset_index(drop=True).join(dates)
     merged[['year', 'month', 'day', 'dayOfWeek', 'week']] = dates
+    print("MMM")
+    print(merged.tail())
     return merged
 
 
@@ -203,7 +235,7 @@ def compute_pre_features(training=True):
         print(agg_targets.shape)
         agg_targets = agg_targets.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4'], 1)
     else:
-        next_days.drop(['date', 'numGames', 'target1', 'target2', 'target3', 'target4'], 1)
+        # next_days.drop(['date', 'numGames', 'target1', 'target2', 'target3', 'target4'], 1)
         mean_group = next_days[['playerId', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
                                 'target1_y_game_mean', 'target2_y_game_mean', 'target3_y_game_mean', 'target4_y_game_mean',
                                 'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
@@ -297,6 +329,58 @@ def compute_pre_features_iter():
     # agg_targets.to_pickle('mlb-merged-data/pre.pkl')
 
 
+def compute_pre_date_features():
+    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
+    merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
+    merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    next_days = merged[['date', 'playerId', 'numGames', 'target1', 'target2', 'target3', 'target4']].copy()
+    next_days = next_days.rename(columns={'target1': 't1', 'target2': 't2', 'target3': 't3', 'target4': 't4'})
+    next_days['ty1'] = np.where(next_days['numGames'] == 0, np.nan, next_days['t1'])
+    next_days['ty2'] = np.where(next_days['numGames'] == 0, np.nan, next_days['t2'])
+    next_days['ty3'] = np.where(next_days['numGames'] == 0, np.nan, next_days['t3'])
+    next_days['ty4'] = np.where(next_days['numGames'] == 0, np.nan, next_days['t4'])
+    next_days['tn1'] = np.where(next_days['numGames'] > 0, np.nan, next_days['t1'])
+    next_days['tn2'] = np.where(next_days['numGames'] > 0, np.nan, next_days['t2'])
+    next_days['tn3'] = np.where(next_days['numGames'] > 0, np.nan, next_days['t3'])
+    next_days['tn4'] = np.where(next_days['numGames'] > 0, np.nan, next_days['t4'])
+
+    dates = next_days[['date']].copy().reset_index(drop=True)
+    dates['year'] = dates['date'].dt.year
+    dates['month'] = dates['date'].dt.month
+    # dates['day'] = dates['date'].dt.day
+    dates['dayOfWeek'] = dates['date'].dt.dayofweek
+    # dates['week'] = dates['date'].dt.isocalendar().week
+    dates = dates.drop(['date'], 1)
+    next_days = next_days.reset_index(drop=True).join(dates)
+    targets = ['t1', 't2', 't3', 't4',
+               'ty1', 'ty2', 'ty3', 'ty4',
+               'tn1', 'tn2', 'tn3', 'tn4']
+    # Years - only use data from first month of season, since that's all we have for 2021
+    years = next_days[['year', 'date'] + targets]
+    years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
+                  (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |
+                  (years['date'] > '2020-07-23') & (years['date'] < '2020-08-22') |
+                  (years['date'] > '2021-04-01') & (years['date'] < '2021-05-01')].drop('date', 1)
+    years = years.groupby(['year']).median()
+    years.columns = list(map(lambda name: 'year_' + name, years.columns))
+    # Months - don't take 2020 values b/c it was irregular season. no 2021 values b/c they're not complete
+    months = next_days[['year', 'month'] + targets]
+    months = months[(months['year'] < 2020)].drop('year', 1)
+    months = months.groupby(['month']).median()
+    months.columns = list(map(lambda name: 'month_' + name, months.columns))
+    # Days of week
+    days_of_week = next_days[['dayOfWeek'] + targets].groupby(['dayOfWeek']).median()
+    days_of_week.columns = list(map(lambda name: 'day_' + name, days_of_week.columns))
+    # Save
+    years.to_pickle('mlb-merged-data/years.pkl', protocol=4)
+    months.to_pickle('mlb-merged-data/months.pkl', protocol=4)
+    days_of_week.to_pickle('mlb-merged-data/days_of_week.pkl', protocol=4)
+    print(years)
+    print(months)
+    print(days_of_week)
+
+
 def reduce_mem_usage(df, verbose=False):
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
     start_mem = df.memory_usage().sum() / 1024**2
@@ -332,7 +416,8 @@ def saved_merged(merged):
 
 
 def main():
-    # compute_pre_features(False)
+    # compute_pre_features(True)
+    # compute_pre_date_features()
     merged = compute_all_merge_features()
     saved_merged(merged)
     # Test the test flow

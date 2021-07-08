@@ -12,14 +12,14 @@ from torch.autograd import Variable
 class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
         super(LinearRegression, self).__init__()
-        drop_p = 0.5
+        drop_p = 0.3
         # self.batch = nn.LayerNorm(inputSize)
         # self.dropout = nn.Dropout(p=drop_p)
         self.linear = nn.Linear(inputSize, outputSize)
         # self.tanh = nn.Tanh()
         # self.relu = nn.ReLU()
         # self.batch1 = nn.LayerNorm(hidden_size)
-        self.dropout1 = nn.Dropout(p=drop_p)
+        # self.dropout1 = nn.Dropout(p=drop_p)
         # self.linear1 = nn.Linear(hidden_size, hidden_size)
         # self.batch2 = nn.LayerNorm(hidden_size)
         # self.dropout2 = nn.Dropout(p=drop_p)
@@ -50,6 +50,7 @@ class LinearRegression(torch.nn.Module):
         # out = self.hidden(out)
         # out = self.extra(out)
         # out = self.relu(out)
+        # out = torch.sqrt(out)
         out = self.leaky_relu(out)
         return out
 
@@ -67,31 +68,6 @@ class CustomLoss(torch.nn.Module):
         return metric
 
 
-class Net(nn.Module):
-
-    def __init__(self):
-        super(Net, self).__init__()
-        # 1 input image channel, 6 output channels, 5x5 square convolution
-        # kernel
-        self.conv1 = nn.Conv2d(1, 6, 5)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        # an affine operation: y = Wx + b
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)  # 5*5 from image dimension
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        # Max pooling over a (2, 2) window
-        x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
-        # If the size is a square, you can specify with a single number
-        x = F.max_pool2d(F.relu(self.conv2(x)), 2)
-        x = torch.flatten(x, 1) # flatten all dimensions except the batch dimension
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-
-
 # Put this in the Notebook!
 def model_inputs(merged):
     # inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4', 'year', 'dayOfWeek', 'day', 'week'], 1).to_numpy(dtype=np.float32)
@@ -101,7 +77,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(92, 4, 64)
+    model = LinearRegression(108, 4, 64)
     return model
 
 
@@ -109,8 +85,8 @@ def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-04-01')
-    merged_train = merged.loc[merged.date < split_date]
-    # merged_train = merged  # train on all data
+    # merged_train = merged.loc[merged.date < split_date]
+    merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
@@ -135,7 +111,7 @@ def main():
     # print(x_train.shape, y_train.shape)
 
     learningRate = 0.003
-    epochs = 300
+    epochs = 400
 
     model = make_model()
     model.train()
