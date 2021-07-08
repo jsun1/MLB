@@ -22,14 +22,14 @@ def compute_all_merge_features():
 def compute_merge_features(next_days, player_box, pre_agg, year, month, day, training):
     if training:
         # Limit training only to the season
-        # next_days = next_days[(next_days['date'] > '2018-03-29') & (next_days['date'] <= '2018-10-01') |
-        next_days = next_days[(next_days['date'] > '2019-03-20') & (next_days['date'] < '2019-09-29') |
+        next_days = next_days[(next_days['date'] > '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                              (next_days['date'] > '2019-03-20') & (next_days['date'] < '2019-09-29') |
                               (next_days['date'] > '2020-07-23') & (next_days['date'] < '2020-09-27') |
                               (next_days['date'] > '2021-04-01') & (next_days['date'] <= '2021-04-30')]
     player_box = player_box_features(player_box)
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
-    merged = merge_date_features(merged, year, month, day, training)
+    # merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
     if not training:
         merged = merged.fillna(0)
@@ -61,19 +61,20 @@ def merge_date_features(merged, year, month, day, training):
     merged['month'] = merged['date'].dt.month
     merged['dayOfWeek'] = merged['date'].dt.dayofweek
     # Year
-    merged = merged.merge(year, on='year', how='left')
-    for i in ['1', '2', '3', '4']:
-        merged['year_tg' + i] = np.where(merged['numGames'] == 0, merged['year_tn' + i], merged['year_ty' + i])
+    # merged = merged.merge(year, on='year', how='left')
+    # for i in ['1', '2', '3', '4']:
+    #     merged['year_tg' + i] = np.where(merged['numGames'] == 0, merged['year_tn' + i], merged['year_ty' + i])
     # Month
-    merged = merged.merge(month, on='month', how='left')
-    for i in ['1', '2', '3', '4']:
-        merged['month_tg' + i] = np.where(merged['numGames'] == 0, merged['month_tn' + i], merged['month_ty' + i])
+    # merged = merged.merge(month, on='month', how='left')
+    # for i in ['1', '2', '3', '4']:
+    #     merged['month_tg' + i] = np.where(merged['numGames'] == 0, merged['month_tn' + i], merged['month_ty' + i])
     # Day of week
     merged = merged.merge(day, on='dayOfWeek', how='left')
     for i in ['1', '2', '3', '4']:
         merged['day_tg' + i] = np.where(merged['numGames'] == 0, merged['day_tn' + i], merged['day_ty' + i])
     to_drop = ['year', 'month', 'dayOfWeek']
-    for name in ['year', 'month', 'day']:
+    # for name in ['year', 'month', 'day']:
+    for name in ['day']:
         for i in ['1', '2', '3', '4']:
             to_drop.append(name + '_ty' + i)
             to_drop.append(name + '_tn' + i)
@@ -193,10 +194,10 @@ def merge_pre_agg(merged, pre_agg, training):
 def compute_pre_features(training=True):
     next_days_orig = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     # Limit computation to only the season and the preceding month
-    # (next_days_orig['date'] > '2018-02-28') & (next_days_orig['date'] <= '2018-10-01') |
-    next_days_orig = next_days_orig[(next_days_orig['date'] > '2019-02-20') & (next_days_orig['date'] < '2019-09-29') |
-                                    (next_days_orig['date'] > '2020-06-23') & (next_days_orig['date'] < '2020-09-27') |
-                                    (next_days_orig['date'] > '2021-03-01') & (next_days_orig['date'] <= '2021-04-30')]
+    # next_days_orig = next_days_orig[(next_days_orig['date'] > '2018-02-28') & (next_days_orig['date'] <= '2018-10-01') |
+    #                                 (next_days_orig['date'] > '2019-02-20') & (next_days_orig['date'] < '2019-09-29') |
+    #                                 (next_days_orig['date'] > '2020-06-23') & (next_days_orig['date'] < '2020-09-27') |
+    #                                 (next_days_orig['date'] > '2021-03-01') & (next_days_orig['date'] <= '2021-04-30')]
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
@@ -442,11 +443,11 @@ def saved_merged(merged):
 
 
 def main():
-    compute_pre_features(False)
+    # compute_pre_features(True)
     # compute_pre_date_features()
     # Compute the merged features
-    # merged = compute_all_merge_features()
-    # saved_merged(merged)
+    merged = compute_all_merge_features()
+    saved_merged(merged)
     # Test the test flow
     # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     # player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
