@@ -23,9 +23,6 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
     if training:
         # Limit training only to the season
         # next_days = next_days[(next_days['date'] > '2018-03-29') & (next_days['date'] <= '2018-10-01') |
-        #                       (next_days['date'] > '2019-03-20') & (next_days['date'] < '2019-09-29') |
-        #                       (next_days['date'] > '2020-07-23') & (next_days['date'] < '2020-09-27') |
-        #                       (next_days['date'] > '2021-04-01') & (next_days['date'] <= '2021-04-30')]
         next_days = next_days[(next_days['date'] > '2019-03-20') & (next_days['date'] < '2019-09-29') |
                               (next_days['date'] > '2020-07-23') & (next_days['date'] < '2020-09-27') |
                               (next_days['date'] > '2021-04-01') & (next_days['date'] <= '2021-04-30')]
@@ -143,6 +140,9 @@ def player_box_features(player_box):
        'sacBuntsPitching': 'sum', 'sacFliesPitching': 'sum', 'saves': 'sum', 'holds': 'sum', 'blownSaves': 'sum',
        'assists': 'sum', 'putOuts': 'sum', 'errors': 'sum', 'chances': 'sum'}).reset_index()
     assert(len(player_box.columns) == num_columns)
+    # Add a column for total number of players that have games on a given day (not helpful)
+    # total = player_box[['date', 'numGames']].groupby(['date']).sum().rename(columns={'numGames': 'totalPlayerGames'})
+    # player_box = player_box.merge(total, on='date', how='left')
     return player_box
 
 
@@ -442,11 +442,11 @@ def saved_merged(merged):
 
 
 def main():
-    # compute_pre_features(True)
+    compute_pre_features(False)
     # compute_pre_date_features()
     # Compute the merged features
-    merged = compute_all_merge_features()
-    saved_merged(merged)
+    # merged = compute_all_merge_features()
+    # saved_merged(merged)
     # Test the test flow
     # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     # player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')

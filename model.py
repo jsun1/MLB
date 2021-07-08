@@ -84,9 +84,9 @@ def make_model():
 def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    split_date = pd.to_datetime('2021-04-01')
-    # merged_train = merged.loc[merged.date < split_date]
-    merged_train = merged  # train on all data
+    split_date = pd.to_datetime('2021-04-15')
+    merged_train = merged.loc[merged.date < split_date]
+    # merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
