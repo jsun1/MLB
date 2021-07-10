@@ -34,7 +34,7 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
-    merged = merge_offsets(merged, training)
+    # merged = merge_offsets(merged, training)
     # Dataset normalization
     not_feature = ['date', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4']
     if training:
@@ -576,7 +576,7 @@ def saved_merged(merged):
 def main():
     # compute_pre_position()
     # compute_pre_features(True)
-    # compute_pre_date_features(True)
+    # compute_pre_date_features(False)
     # Compute the merged features
     merged = compute_all_merge_features()
     saved_merged(merged)

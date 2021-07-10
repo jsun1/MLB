@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-
 # Put this model in the Notebook!
 class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
@@ -78,13 +77,14 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(105, 4, 16)
+    model = LinearRegression(101, 4, 16)
     return model
 
 
 def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
+    # merged[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = merged[['target1_med', 'target2_med', 'target3_med', 'target4_med']]
     split_date = pd.to_datetime('2021-04-01')
     training = True
     if training:
@@ -92,12 +92,10 @@ def main():
     else:
         merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
+    x_train_base = model_inputs(merged_train.copy())
+    x_val_base = model_inputs(merged_val.copy())
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
-
-    # x_train = merged[['caughtStealing', 'sacBunts']].to_numpy(dtype=np.float32)
-    # print(len(x_values[0]))
-
     y_train = merged_train[['target1', 'target2', 'target3', 'target4']].to_numpy(dtype=np.float32)
     y_val = merged_val[['target1', 'target2', 'target3', 'target4']].to_numpy(dtype=np.float32)
     # y_train = y_train.reshape(-1, 4)
@@ -139,6 +137,51 @@ def main():
 
         # get loss for the predicted output
         loss = criterion(outputs, labels)
+
+        # Update the lag
+        if epoch % 10 == 9 and False:
+            model.eval()
+            inputs_val = Variable(torch.from_numpy(x_train_base))
+            outputs_val = model(inputs_val)
+            pred_lag = outputs_val.detach().numpy()
+            pred_lag = np.clip(pred_lag, 0, 100)
+            pred_lag = pd.DataFrame(pred_lag)
+            lag_update = pred_lag.rename(columns={0: "1d_t1", 1: "1d_t2", 2: "1d_t3", 3: "1d_t4"})
+            index = merged_train[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
+            lag_update[['date', 'playerId']] = merged_train[['date', 'playerId']]
+            lag_update = lag_update.sort_values(['playerId', 'date']).reset_index(drop=True)
+            lag_update = lag_update.drop('date', 1)
+            lag_update_1d = lag_update.groupby(['playerId']).shift(1).fillna(0)
+            index[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = lag_update_1d
+            assert(list(merged_train.columns)[-4:] == ['1d_t1', '1d_t2', '1d_t3' ,'1d_t4'])
+            merged_train = merged_train.drop(['1d_t1', '1d_t2', '1d_t3' ,'1d_t4'], 1).merge(index, on=['date', 'playerId'], how='left')
+            # merged_train[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = index.drop(['playerId'], 1).reset_index(drop=True)
+
+            # lag_update = lag_update.groupby(['playerId']).shift(1).fillna(0)
+            # # lag = pd.concat([lag, lag_update]).groupby(['playerId']).last()
+            # # Update the data based on the lag
+            # print('shape', x_train.shape, lag_update.shape)
+            # print('hi', lag_update.head())
+            # print('hi', lag_update.tail())
+            # merged_train[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = lag_update.drop('playerId', 1).reset_index(drop=True)
+            x_train = model_inputs(merged_train)
+
+            # Update the validation set inputs
+            inputs_val = Variable(torch.from_numpy(x_val_base))
+            outputs_val = model(inputs_val)
+            pred_lag = outputs_val.detach().numpy()
+            pred_lag = np.clip(pred_lag, 0, 100)
+            pred_lag = pd.DataFrame(pred_lag)
+            lag_update = pred_lag.rename(columns={0: "1d_t1", 1: "1d_t2", 2: "1d_t3", 3: "1d_t4"})
+            index = merged_val[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
+            lag_update[['date', 'playerId']] = merged_train[['date', 'playerId']]
+            lag_update = lag_update.sort_values(['playerId', 'date']).reset_index(drop=True)
+            lag_update = lag_update.drop('date', 1)
+            lag_update_1d = lag_update.groupby(['playerId']).shift(1).fillna(0)
+            index[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = lag_update_1d
+            assert (list(merged_val.columns)[-4:] == ['1d_t1', '1d_t2', '1d_t3', '1d_t4'])
+            merged_val = merged_val.drop(['1d_t1', '1d_t2', '1d_t3', '1d_t4'], 1).merge(index, on=['date', 'playerId'], how='left')
+            model.train()
 
         # Get the evaluation metric
         if epoch % 20 == 19:
