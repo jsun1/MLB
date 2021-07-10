@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import time
@@ -10,6 +11,7 @@ def compute_all_merge_features():
     year = pd.read_pickle('mlb-merged-data/years.pkl')
     month = pd.read_pickle('mlb-merged-data/months.pkl')
     day = pd.read_pickle('mlb-merged-data/days_of_week.pkl')
+    # positions = pd.read_pickle('mlb-merged-data/positions.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
@@ -22,17 +24,17 @@ def compute_all_merge_features():
 def compute_merge_features(next_days, player_box, pre_agg, year, month, day, training):
     if training:
         # Limit training only to the season
-        next_days = next_days[(next_days['date'] > '2018-03-29') & (next_days['date'] <= '2018-10-01') |
-                              (next_days['date'] > '2019-03-20') & (next_days['date'] < '2019-09-29') |
-                              (next_days['date'] > '2020-07-23') & (next_days['date'] < '2020-09-27') |
-                              (next_days['date'] > '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+        next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                              (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                              (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+                              (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
     player_box = player_box_features(player_box)
+    # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
-    # merged = merge_date_features(merged, year, month, day, training)
+    merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
-    if not training:
-        merged = merged.fillna(0)
+    merged = merge_offsets(merged, training)
     # Dataset normalization
     not_feature = ['date', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4']
     if training:
@@ -50,6 +52,23 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
     features = [f for f in list(merged.columns) if f not in not_feature]
     merged[features] = norm
     # merged = reduce_mem_usage(merged)
+    return merged
+
+
+# Put this in the Notebook!
+def merge_offsets(merged, training):
+    if training:
+        index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
+        targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+        targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
+        targets = targets.drop('date', 1)
+        targets_1d = targets.groupby(['playerId']).shift(1).fillna(0)
+        index[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = targets_1d
+        # targets_2d = targets.groupby(['playerId']).shift(2).fillna(0)
+        # index[['2d_t1', '2d_t2', '2d_t3', '2d_t4']] = targets_2d
+        merged = merged.merge(index, on=['date', 'playerId'], how='left')
+    else:
+        pass
     return merged
 
 
@@ -85,14 +104,15 @@ def merge_date_features(merged, year, month, day, training):
 # Add linear date features (they didn't help with the training/validation loss)
 def merge_date_features_linear(merged, next_days):
     dates = next_days[['date']].copy().reset_index(drop=True)
-    dates['year'] = dates['date'].dt.year.apply(lambda x: 0 if x <= 2019 else 1)
-    dates['month'] = dates['date'].dt.month
-    dates['day'] = dates['date'].dt.day
+    # dates['year'] = dates['date'].dt.year.apply(lambda x: 0 if x <= 2019 else 1)
+    # dates['month'] = dates['date'].dt.month
+    # dates['day'] = dates['date'].dt.day
     dates['dayOfWeek'] = dates['date'].dt.dayofweek
-    dates['week'] = dates['date'].dt.isocalendar().week
+    # dates['week'] = dates['date'].dt.isocalendar().week
+    dates['dayOfYear'] = dates['date'].dt.dayofyear
     dates = dates.drop(['date'], 1)
-    # merged = merged.reset_index(drop=True).join(dates)
-    merged[['year', 'month', 'day', 'dayOfWeek', 'week']] = dates
+    # merged[['year', 'month', 'day', 'dayOfWeek', 'week', 'dayOfYear']] = dates
+    merged[['dayOfWeek', 'dayOfYear']] = dates
     print("MMM")
     print(merged.tail())
     return merged
@@ -108,14 +128,28 @@ def player_box_features(player_box):
     # inningsPitched is a float (0.1)
 
     player_box = player_box.drop(['gamePk', 'gameDate', 'gameTimeUTC', 'teamId',
-       'teamName', 'playerName', 'positionName', 'positionType'], 1)
+       'teamName', 'playerName', 'positionName', 'positionType'], 1).reset_index(drop=True)
+    # Convert jerseyNum to int
+    # a = player_box[['jerseyNum']]
+    # for tuple in a.itertuples(index=True):
+    #     t = type(tuple[1])
+    #     if t != type('33') and t != type(0) and t != type(0.1):
+    #         print('type', t)
+    #     if t == type('ww'):
+    #         print('mee', tuple[1])
+    # print(player_box[['jerseyNum']].shape)
+    # print('isna', player_box[['jerseyNum']].isna().sum())
+    # print(player_box[['home']]).tail()
+    # print(player_box[['jerseyNum']].info(verbose=True))
+    # player_box['jerseyNum'] = player_box['jerseyNum'].apply(lambda x: 0 if (x is None or x == '' or (not isinstance(x, str) and np.isnan(x))) else int(x))
 
     # Add number of games played
     player_box['numGames'] = 1
+    player_box['hasGame'] = 1
 
     first = lambda x: x.iloc[0]
     num_columns = len(player_box.columns)
-    player_box = player_box.groupby(['date', 'playerId']).agg({'numGames': 'sum',
+    player_box = player_box.groupby(['date', 'playerId']).agg({'numGames': 'sum', 'hasGame': 'max',
         'home': 'max', #'gamePk': first, 'gameDate': first, 'gameTimeUTC': first, 'teamId': first,
        #'teamName': first, 'playerName': first,
         'jerseyNum': 'min', 'positionCode': first,
@@ -156,22 +190,12 @@ def merge_pre_agg(merged, pre_agg, training):
         # In training, use all values
         merged = merged.merge(pre_agg, on=['date', 'playerId'])
     else:
-        # In testing, use only final values
-        # Account for unknown players
-        # TODO: this still gives nan on submission
-        is_known = merged['playerId'].isin(pre_agg['playerId'])
-        new_players = pd.DataFrame(is_known, columns=['playerId']).rename(columns={'playerId': 'is_known'})
-        new_players['playerId'] = merged['playerId']
-        new_players = new_players[(new_players['is_known'] == False)].drop(['is_known'], 1).reset_index(drop=True)
         lookup = pre_agg
-        if new_players.shape[0] > 0:
-            # If there are new players, add the unknown player template to the lookup
-            unknown = pre_agg[pre_agg['playerId'] == -1].reset_index(drop=True).copy()
-            unknown = unknown.loc[unknown.index.repeat(new_players.shape[0])].reset_index(drop=True)
-            unknown['playerId'] = new_players['playerId']
-            lookup = lookup.append(unknown, ignore_index=True)
         # Assume pre_agg is a lookup data frame which can be merged via playerId
         merged = merged.merge(lookup, on=['playerId'], how='left')
+        # Account for unknown players
+        unknown = pre_agg[(pre_agg['playerId'] == -1)].reset_index(drop=True).copy().iloc[0]
+        merged = merged.fillna(value=unknown)
     # Use the yes/no game target depending on numGames
     merged['target1_game'] = np.where(merged['numGames'] == 0, merged['target1_n_game'], merged['target1_y_game'])
     merged['target2_game'] = np.where(merged['numGames'] == 0, merged['target2_n_game'], merged['target2_y_game'])
@@ -187,6 +211,7 @@ def merge_pre_agg(merged, pre_agg, training):
                           'target1_n_game_mean', 'target2_n_game_mean', 'target3_n_game_mean', 'target4_n_game_mean'
                           ], 1)
     assert(merged.shape[0] == m_shape[0])
+    assert(merged.isna().sum().sum() == 0)
     return merged
 
 
@@ -194,10 +219,12 @@ def merge_pre_agg(merged, pre_agg, training):
 def compute_pre_features(training=True):
     next_days_orig = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     # Limit computation to only the season and the preceding month
-    # next_days_orig = next_days_orig[(next_days_orig['date'] > '2018-02-28') & (next_days_orig['date'] <= '2018-10-01') |
-    #                                 (next_days_orig['date'] > '2019-02-20') & (next_days_orig['date'] < '2019-09-29') |
-    #                                 (next_days_orig['date'] > '2020-06-23') & (next_days_orig['date'] < '2020-09-27') |
-    #                                 (next_days_orig['date'] > '2021-03-01') & (next_days_orig['date'] <= '2021-04-30')]
+    # next_days_orig = next_days_orig[(next_days_orig['date'] >= '2018-02-28') & (next_days_orig['date'] <= '2018-10-01') |
+    #                                 (next_days_orig['date'] >= '2019-02-20') & (next_days_orig['date'] <= '2019-09-29') |
+    #                                 (next_days_orig['date'] >= '2020-06-23') & (next_days_orig['date'] <= '2020-09-27') |
+    #                                 (next_days_orig['date'] >= '2021-03-01') & (next_days_orig['date'] <= '2021-04-30')]
+    if not training:
+        next_days_orig = next_days_orig[(next_days_orig['date'] >= '2019-05-01')]
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
@@ -275,6 +302,9 @@ def compute_pre_features(training=True):
         agg_all = pd.concat([mean_all, median_all], axis=0)
         print('agg_all', agg_all)
         agg_targets = agg_targets.append(agg_all, ignore_index=True)
+        # print(agg_targets.head())
+        # TODO: Compute the last day's target (for lag)
+
         # Ensure the correct order
         agg_targets = agg_targets[['playerId', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
                                    'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
@@ -350,7 +380,7 @@ def compute_pre_features_iter():
     # agg_targets.to_pickle('mlb-merged-data/pre.pkl')
 
 
-def compute_pre_date_features():
+def compute_pre_date_features(training=True):
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
@@ -392,10 +422,15 @@ def compute_pre_date_features():
     months.columns = list(map(lambda name: 'month_' + name, months.columns))
     # Days of week - only during the season
     days_of_week = next_days[['dayOfWeek', 'date'] + targets]
-    days_of_week = days_of_week[  # (days_of_week['date'] > '2018-03-29') & (days_of_week['date'] <= '2018-10-01') |
-                                (days_of_week['date'] > '2019-03-20') & (days_of_week['date'] < '2019-09-29') |
-                                (days_of_week['date'] > '2020-07-23') & (days_of_week['date'] < '2020-09-27') |
-                                (days_of_week['date'] > '2021-04-01') & (days_of_week['date'] <= '2021-04-30')]
+    if training:
+        days_of_week = days_of_week[(days_of_week['date'] >= '2018-03-29') & (days_of_week['date'] <= '2018-10-01') |
+                                    (days_of_week['date'] >= '2019-03-20') & (days_of_week['date'] <= '2019-09-29') |
+                                    (days_of_week['date'] >= '2020-07-23') & (days_of_week['date'] <= '2020-09-27')]
+    else:
+        days_of_week = days_of_week[(days_of_week['date'] >= '2018-03-29') & (days_of_week['date'] <= '2018-10-01') |
+                                    (days_of_week['date'] >= '2019-03-20') & (days_of_week['date'] <= '2019-09-29') |
+                                    (days_of_week['date'] >= '2020-07-23') & (days_of_week['date'] <= '2020-09-27') |
+                                    (days_of_week['date'] >= '2021-04-01') & (days_of_week['date'] <= '2021-04-30')]
     days_of_week = days_of_week.drop('date', 1)
     days_of_week = days_of_week.groupby(['dayOfWeek']).median()
     days_of_week.columns = list(map(lambda name: 'day_' + name, days_of_week.columns))
@@ -406,6 +441,102 @@ def compute_pre_date_features():
     print(years)
     print(months)
     print(days_of_week)
+
+
+# Computes the median target for each team when they have a game
+def compute_pre_team():
+    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                          (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                          (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27')]
+    #                       #(next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+    next_days = next_days[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+    player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    player_box = player_box[(player_box['date'] >= '2018-03-29') & (player_box['date'] <= '2018-10-01') |
+                          (player_box['date'] >= '2019-03-20') & (player_box['date'] <= '2019-09-29') |
+                          (player_box['date'] >= '2020-07-23') & (player_box['date'] <= '2020-09-27')]
+    print(player_box.shape)
+    print(player_box['teamId'].nunique())
+    player_box = player_box[['date', 'playerId', 'teamId']]
+    player_box.groupby(['date', 'playerId']).min()  # A player may have played > 1 game on a day, so take min teamId
+    merged = next_days.merge(player_box, on=['date', 'playerId'], how='left').reset_index(drop=True)
+    merged = merged[['teamId', 'target1', 'target2', 'target3', 'target4']]
+    # merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    # merged_y_game = np.where(np.isnan(merged['teamId']), merged['target1_n_game'], merged['target1_y_game'])
+    merged_y_game = merged[(merged['teamId'] != np.nan)]
+    merged_n_game = merged[(merged['teamId'] == np.nan)]
+    teams_y_game = merged_y_game.groupby(['teamId']).median()
+    # teams_n_game = merged_n_game.groupby(['teamId']).median()
+
+    # print(teams.shape)
+    # print(teams)
+    # teams.to_pickle('mlb-merged-data/teams.pkl', protocol=4)
+
+    # print(next_days[(next_days['date'] == '2018-03-29')].shape())
+
+    rosters = pd.read_pickle('mlb-processed-data/rosters.pkl')
+    rosters = rosters[(rosters['date'] >= '2018-03-29') & (rosters['date'] <= '2018-10-01') |
+                          (rosters['date'] >= '2019-03-20') & (rosters['date'] <= '2019-09-29') |
+                          (rosters['date'] >= '2020-07-23') & (rosters['date'] <= '2020-09-27')]
+    print(rosters[['teamId', 'statusCode']].nunique())
+    print(rosters.shape)
+    print(rosters.columns)
+    print(rosters.head())
+    print(rosters.tail())
+    print(next_days.shape)
+    merged = next_days.merge(rosters, on=['date', 'playerId'], how='left').reset_index(drop=True)
+    print('m', merged.shape)
+    print(merged.head())
+    print(merged.tail())
+    print(merged['gameDate'].isna().sum())
+    print(merged['status'].value_counts())
+
+
+
+
+def compute_pre_position(training=True):
+    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+
+    next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                          (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                          (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27')]
+    #                       #(next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+    next_days = next_days[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+    player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    if training:
+        next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                              (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                              (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27')]
+        player_box = player_box[(player_box['date'] >= '2018-03-29') & (player_box['date'] <= '2018-10-01') |
+                                (player_box['date'] >= '2019-03-20') & (player_box['date'] <= '2019-09-29') |
+                                (player_box['date'] >= '2020-07-23') & (player_box['date'] <= '2020-09-27')]
+    else:
+        next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                              (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                              (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+                              (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+        player_box = player_box[(player_box['date'] >= '2018-03-29') & (player_box['date'] <= '2018-10-01') |
+                                (player_box['date'] >= '2019-03-20') & (player_box['date'] <= '2019-09-29') |
+                                (player_box['date'] >= '2020-07-23') & (player_box['date'] <= '2020-09-27') |
+                                (player_box['date'] >= '2021-04-01') & (player_box['date'] <= '2021-04-30')]
+    print(player_box.shape)
+    print(player_box['teamId'].nunique())
+    print(player_box[['positionName', 'positionType', 'positionCode']].value_counts())
+
+    player_box = player_box[['date', 'playerId', 'positionCode']]
+    # player_box.groupby(['date', 'playerId']).min()  # A player may have played > 1 game on a day, so take min teamId
+    # merged = next_days.merge(player_box, on=['date', 'playerId'], how='left').reset_index(drop=True)
+    # merged = merged[['teamId', 'target1', 'target2', 'target3', 'target4']]
+    # merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    # merged_y_game = merged[(merged['teamId'] != np.nan)]
+    # merged_n_game = merged[(merged['teamId'] == np.nan)]
+    # teams_y_game = merged_y_game.groupby(['teamId']).median()
+    merged = next_days.merge(player_box, on=['date', 'playerId'], how='left').reset_index(drop=True)
+    merged = merged[['positionCode', 'target1', 'target2', 'target3', 'target4']]
+    positions = merged.groupby(['positionCode']).median()
+    positions = positions.rename(columns={'target1': 'pos_t1', 'target2': 'pos_t2', 'target3': 'pos_t3', 'target4': 'pos_t4'})
+    print(positions)
+    positions.to_pickle('mlb-merged-data/positions.pkl', protocol=4)
 
 
 def reduce_mem_usage(df, verbose=False):
@@ -443,16 +574,31 @@ def saved_merged(merged):
 
 
 def main():
+    # compute_pre_position()
     # compute_pre_features(True)
-    # compute_pre_date_features()
+    # compute_pre_date_features(True)
     # Compute the merged features
     merged = compute_all_merge_features()
     saved_merged(merged)
     # Test the test flow
     # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    # next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+    #                       (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+    #                       (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+    #                       (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+    # merge_offsets(next_days)
     # player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     # pre_agg = pd.read_pickle('mlb-merged-data/pre_train.pkl')
     # compute_merge_features(next_days, player_box, pre_agg, True)
+    # Exploring the dates
+    # n = next_days[['date', 'target1', 'target2', 'target3', 'target4']].copy()
+    # n['target1'] = n['target1'].apply(lambda x: x * 100)
+    # n['target2'] = n['target2'].apply(lambda x: x - 0.3)
+    # n['target4'] = n['target4'].apply(lambda x: x + 1)
+    # n = n[(n['date'] >= '2019-06-20') & (n['date'] <= '2019-07-11')]
+    # n = n.groupby(['date']).median()
+    # n.plot()
+    # plt.show()
 
 
 if __name__ == '__main__':

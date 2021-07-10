@@ -12,10 +12,10 @@ from torch.autograd import Variable
 class LinearRegression(torch.nn.Module):
     def __init__(self, inputSize, outputSize, hidden_size):
         super(LinearRegression, self).__init__()
-        drop_p = 0.3
+        drop_p = 0.5
         # self.batch = nn.LayerNorm(inputSize)
         # self.dropout = nn.Dropout(p=drop_p)
-        self.linear = nn.Linear(inputSize, outputSize)
+        self.linear = nn.Linear(inputSize, hidden_size)
         # self.tanh = nn.Tanh()
         # self.relu = nn.ReLU()
         # self.batch1 = nn.LayerNorm(hidden_size)
@@ -26,14 +26,14 @@ class LinearRegression(torch.nn.Module):
         # self.linear2 = nn.Linear(hidden_size, hidden_size)
         # self.batch3 = nn.LayerNorm(hidden_size)
         # self.dropout3 = nn.Dropout(p=drop_p)
-        # self.hidden = nn.Linear(hidden_size, outputSize)
-        # self.extra = nn.Linear(4, outputSize)
+        self.hidden = nn.Linear(hidden_size, outputSize)
         self.leaky_relu = nn.LeakyReLU()
 
     def forward(self, x):
         # out = self.batch(x)
         # out = self.dropout(x)
         out = self.linear(x)  # changed out to x
+        out = self.leaky_relu(out)
         # out = self.tanh(out)
         # out = self.batch1(out)
         # out = self.dropout1(out)
@@ -47,7 +47,8 @@ class LinearRegression(torch.nn.Module):
         # out = self.relu(out)
         # out = self.batch3(out)
         # out = self.dropout3(out)
-        # out = self.hidden(out)
+
+        out = self.hidden(out)
         # out = self.extra(out)
         # out = self.relu(out)
         # out = torch.sqrt(out)
@@ -77,7 +78,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(92, 4, 64)
+    model = LinearRegression(105, 4, 16)
     return model
 
 
@@ -85,8 +86,11 @@ def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-04-01')
-    # merged_train = merged.loc[merged.date < split_date]
-    merged_train = merged  # train on all data
+    training = True
+    if training:
+        merged_train = merged.loc[merged.date < split_date]
+    else:
+        merged_train = merged  # train on all data
     merged_val = merged.loc[merged.date >= split_date]
     x_train = model_inputs(merged_train)
     x_val = model_inputs(merged_val)
@@ -111,7 +115,7 @@ def main():
     # print(x_train.shape, y_train.shape)
 
     learningRate = 0.003
-    epochs = 400
+    epochs = 600
 
     model = make_model()
     model.train()
@@ -137,7 +141,7 @@ def main():
         loss = criterion(outputs, labels)
 
         # Get the evaluation metric
-        if epoch % 10 == 9:
+        if epoch % 20 == 19:
             model.eval()
             metric = np.mean(np.mean(np.absolute(np.clip(outputs.detach().numpy(), 0, 100) - labels.detach().numpy()), axis=0))
             # Validation
@@ -159,10 +163,11 @@ def main():
     # print('epoch {}, loss {}'.format(epoch, np.sqrt(loss.item())))
 
     # save the model
-    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    link = 'saved-models/' + date + '.pt'
-    torch.save(model.state_dict(), link)
-    print('Saved at', link)
+    if not training:
+        date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+        link = 'saved-models/' + date + '.pt'
+        torch.save(model.state_dict(), link)
+        print('Saved at', link)
 
 
 if __name__ == '__main__':
