@@ -34,9 +34,9 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
-    # merged = merge_offsets(merged, training)
+    merged = merge_real_offsets(merged, training)
     # Dataset normalization
-    not_feature = ['date', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4']
+    not_feature = ['date', 'playerId', 'target1', 'target2', 'target3', 'target4']
     if training:
         not_feature.append('engagementMetricsDate')
     norm = merged.drop(not_feature, 1)
@@ -49,8 +49,8 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
         norm_min = pd.read_pickle('../input/mlbmergeddata/norm_min.pkl')
         norm_std = pd.read_pickle('../input/mlbmergeddata/norm_std.pkl')
     norm = (norm - norm_min) / norm_std
-    features = [f for f in list(merged.columns) if f not in not_feature]
-    merged[features] = norm
+    merged[list(norm.columns)] = norm
+    print(merged.isna().sum().to_string())
     # merged = reduce_mem_usage(merged)
     return merged
 
@@ -67,6 +67,30 @@ def merge_offsets(merged, training):
         # targets_2d = targets.groupby(['playerId']).shift(2).fillna(0)
         # index[['2d_t1', '2d_t2', '2d_t3', '2d_t4']] = targets_2d
         merged = merged.merge(index, on=['date', 'playerId'], how='left')
+    else:
+        pass
+    return merged
+
+
+# Put this in the Notebook!
+def merge_real_offsets(merged, training):
+    if training:
+        index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
+        # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+        targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+        targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
+        targets = targets.drop('date', 1)
+        targets = targets.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
+        targets_1d = targets.groupby(['playerId']).shift(1).fillna(0)
+        # columns = list(map(lambda x: '1d_' + x, list(targets_1d.columns)))
+        columns = list(targets_1d.columns)
+        index[columns] = targets_1d
+        # targets_2d = targets.groupby(['playerId']).shift(2).fillna(0)
+        # index[['2d_t1', '2d_t2', '2d_t3', '2d_t4']] = targets_2d
+        merged = merged.merge(index, on=['date', 'playerId'], how='left')
+        # Compute and save the last values for testing
+        to_save = targets.groupby(['playerId']).last().fillna(0)
+        to_save.to_pickle('mlb-merged-data/1d.pkl', protocol=4)
     else:
         pass
     return merged
@@ -127,7 +151,7 @@ def player_box_features(player_box):
     # positionCode/Name/Type, battingOrder have ~1000 outliers
     # inningsPitched is a float (0.1)
 
-    player_box = player_box.drop(['gamePk', 'gameDate', 'gameTimeUTC', 'teamId',
+    player_box = player_box.drop(['gamePk', 'gameDate', 'gameTimeUTC', 'teamId', 'jerseyNum',
        'teamName', 'playerName', 'positionName', 'positionType'], 1).reset_index(drop=True)
     # Convert jerseyNum to int
     # a = player_box[['jerseyNum']]
@@ -152,7 +176,8 @@ def player_box_features(player_box):
     player_box = player_box.groupby(['date', 'playerId']).agg({'numGames': 'sum', 'hasGame': 'max',
         'home': 'max', #'gamePk': first, 'gameDate': first, 'gameTimeUTC': first, 'teamId': first,
        #'teamName': first, 'playerName': first,
-        'jerseyNum': 'min', 'positionCode': first,
+        #'jerseyNum': 'min',
+        'positionCode': first,
        #'positionName': first, 'positionType': first,
         'battingOrder': 'min', 'gamesPlayedBatting': 'sum',
        'flyOuts': 'sum', 'groundOuts': 'sum', 'runsScored': 'sum', 'doubles': 'sum', 'triples': 'sum', 'homeRuns': 'sum',
@@ -537,6 +562,22 @@ def compute_pre_position(training=True):
     positions = positions.rename(columns={'target1': 'pos_t1', 'target2': 'pos_t2', 'target3': 'pos_t3', 'target4': 'pos_t4'})
     print(positions)
     positions.to_pickle('mlb-merged-data/positions.pkl', protocol=4)
+
+
+def compute_last_real_offset():
+    index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
+    # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+    targets = merged.drop(
+        ['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med',
+         'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+    targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
+    targets = targets.drop('date', 1)
+    targets_1d = targets.groupby(['playerId']).shift(1).fillna(0)
+    columns = list(map(lambda x: '1d_' + x, list(targets_1d.columns)))
+    index[columns] = targets_1d
+    # targets_2d = targets.groupby(['playerId']).shift(2).fillna(0)
+    # index[['2d_t1', '2d_t2', '2d_t3', '2d_t4']] = targets_2d
+    merged = merged.merge(index, on=['date', 'playerId'], how='left')
 
 
 def reduce_mem_usage(df, verbose=False):

@@ -71,13 +71,13 @@ class CustomLoss(torch.nn.Module):
 # Put this in the Notebook!
 def model_inputs(merged):
     # inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4', 'year', 'dayOfWeek', 'day', 'week'], 1).to_numpy(dtype=np.float32)
-    inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'jerseyNum', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
+    inputs = merged.drop(['date', 'engagementMetricsDate', 'playerId', 'target1', 'target2', 'target3', 'target4'], 1).to_numpy(dtype=np.float32)
     return inputs
 
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(101, 4, 16)
+    model = LinearRegression(194, 4, 16)
     return model
 
 
@@ -113,7 +113,7 @@ def main():
     # print(x_train.shape, y_train.shape)
 
     learningRate = 0.003
-    epochs = 600
+    epochs = 700
 
     model = make_model()
     model.train()
@@ -201,6 +201,21 @@ def main():
 
         # update parameters
         optimizer.step()
+
+        # if epoch >= 500:
+        #     for g in optimizer.param_groups:
+        #         g['lr'] = 0.001
+
+    # print(list(model.linear.parameters()))
+    # torch.set_printoptions(threshold=10000)
+    # weights = list(model.linear.parameters())[0].tolist()
+    # # print(list(model.linear.parameters())[0])
+    # print(len(weights))
+    # print(len(weights[0]))
+    # for node in weights:
+    #     for weight in node:
+    #         print(weight)
+    #     print('------------------------------------')
 
     # print(loss.item())
     # print('epoch {}, loss {}'.format(epoch, np.sqrt(loss.item())))
