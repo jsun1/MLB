@@ -34,6 +34,12 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
+    # These features have low activation
+    # merged = merged.drop(['caughtStealing', 'groundOutsPitching', 'hitByPitch', 'day_t3', 'wildPitches', 'rbi',
+    #                       'numGames', 'blownSaves', 'doubles', 'catchersInterferencePitching'], 1)
+                          #                                      'runsScored', 'triples',
+                          # 'caughtStealingPitching', 'rbiPitching', 'assists', 'groundIntoDoublePlay', 'day_tg4',
+                          # 'plateAppearances', 'atBatsPitching', 'groundIntoTriplePlay'], 1)
     merged = merge_real_offsets(merged, training)
     # Dataset normalization
     not_feature = ['date', 'playerId', 'target1', 'target2', 'target3', 'target4']
@@ -50,7 +56,7 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
         norm_std = pd.read_pickle('../input/mlbmergeddata/norm_std.pkl')
     norm = (norm - norm_min) / norm_std
     merged[list(norm.columns)] = norm
-    print(merged.isna().sum().to_string())
+    # print(merged.isna().sum().to_string())
     # merged = reduce_mem_usage(merged)
     return merged
 
@@ -74,25 +80,51 @@ def merge_offsets(merged, training):
 
 # Put this in the Notebook!
 def merge_real_offsets(merged, training):
+    global OFFSETS1
+    global OFFSETS2
+    global OFFSETS3
     if training:
         index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
         # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
         targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
         targets = targets.drop('date', 1)
-        targets = targets.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
-        targets_1d = targets.groupby(['playerId']).shift(1).fillna(0)
-        # columns = list(map(lambda x: '1d_' + x, list(targets_1d.columns)))
-        columns = list(targets_1d.columns)
-        index[columns] = targets_1d
+        targets_1d_orig = targets.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
+        targets_1d = targets_1d_orig.groupby(['playerId']).shift(1).fillna(0)
+        index[list(targets_1d.columns)] = targets_1d
+        targets_2d_orig = targets.rename(mapper=lambda x: x if x == 'playerId' else '2d_' + x, axis=1)
+        targets_2d = targets_2d_orig.groupby(['playerId']).shift(2).fillna(0)
+        index[list(targets_2d.columns)] = targets_2d
+        targets_3d_orig = targets.rename(mapper=lambda x: x if x == 'playerId' else '3d_' + x, axis=1)
+        targets_3d = targets_3d_orig.groupby(['playerId']).shift(3).fillna(0)
+        index[list(targets_3d.columns)] = targets_3d
         # targets_2d = targets.groupby(['playerId']).shift(2).fillna(0)
         # index[['2d_t1', '2d_t2', '2d_t3', '2d_t4']] = targets_2d
         merged = merged.merge(index, on=['date', 'playerId'], how='left')
         # Compute and save the last values for testing
-        to_save = targets.groupby(['playerId']).last().fillna(0)
+        to_save = targets_1d_orig.groupby(['playerId']).last().fillna(0)
         to_save.to_pickle('mlb-merged-data/1d.pkl', protocol=4)
+        to_save = targets_2d_orig.groupby(['playerId']).nth(-2).fillna(0)
+        to_save.to_pickle('mlb-merged-data/2d.pkl', protocol=4)
+        to_save = targets_3d_orig.groupby(['playerId']).nth(-3).fillna(0)
+        to_save.to_pickle('mlb-merged-data/3d.pkl', protocol=4)
     else:
-        pass
+        # Update the offsets
+        to_update = merged.drop(
+            ['target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
+             'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+        to_update = to_update.drop('date', 1)
+        to_update = to_update.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
+        to_update = to_update.groupby(['playerId']).last()
+        # Merge in the offsets based on playerId
+        merged = merged.merge(OFFSETS1, on=['playerId'], how='left').fillna(0)
+        merged = merged.merge(OFFSETS2, on=['playerId'], how='left').fillna(0)
+        merged = merged.merge(OFFSETS3, on=['playerId'], how='left').fillna(0)
+        # Actually update offsets
+        OFFSETS3 = OFFSETS2.rename(mapper=lambda x: x if x == 'playerId' else x.replace("2d_", "3d_"), axis=1)
+        OFFSETS2 = OFFSETS1.rename(mapper=lambda x: x if x == 'playerId' else x.replace("1d_", "2d_"), axis=1)
+        OFFSETS1 = pd.concat([OFFSETS1, to_update]).groupby(['playerId']).last()
     return merged
 
 

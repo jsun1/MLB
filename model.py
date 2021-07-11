@@ -77,7 +77,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(194, 4, 16)
+    model = LinearRegression(380, 4, 16)
     return model
 
 
@@ -86,7 +86,7 @@ def main():
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     # merged[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = merged[['target1_med', 'target2_med', 'target3_med', 'target4_med']]
     split_date = pd.to_datetime('2021-04-01')
-    training = True
+    training = False
     if training:
         merged_train = merged.loc[merged.date < split_date]
     else:
@@ -209,13 +209,15 @@ def main():
     # print(list(model.linear.parameters()))
     # torch.set_printoptions(threshold=10000)
     # weights = list(model.linear.parameters())[0].tolist()
-    # # print(list(model.linear.parameters())[0])
     # print(len(weights))
     # print(len(weights[0]))
-    # for node in weights:
-    #     for weight in node:
-    #         print(weight)
-    #     print('------------------------------------')
+    # weights = np.array(weights)
+    # print('AVG')
+    # for w in np.average(np.absolute(weights), axis=0):
+    #     print(w)
+    # print('MAX')
+    # for w in np.max(np.absolute(weights), axis=0):
+    #     print(w)
 
     # print(loss.item())
     # print('epoch {}, loss {}'.format(epoch, np.sqrt(loss.item())))
