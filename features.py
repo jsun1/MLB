@@ -11,17 +11,18 @@ def compute_all_merge_features():
     year = pd.read_pickle('mlb-merged-data/years.pkl')
     month = pd.read_pickle('mlb-merged-data/months.pkl')
     day = pd.read_pickle('mlb-merged-data/days_of_week.pkl')
+    players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv')
     # positions = pd.read_pickle('mlb-merged-data/positions.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, True)
+    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, True)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box, pre_agg, year, month, day, training):
+def compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, training):
     if training:
         # Limit training only to the season
         next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
@@ -29,14 +30,16 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
                               (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
                               (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
         # Add whether they are test set players
-        players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv', usecols=['playerId', 'playerForTestSetAndFuturePreds'])
-        players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
-        next_days = next_days.merge(players, on=['playerId'], how='left')
+        # players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv', usecols=['playerId', 'playerForTestSetAndFuturePreds'])
+        # players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
+        # next_days = next_days.merge(players, on=['playerId'], how='left')
         # next_days = next_days[(next_days['playerForTestSetAndFuturePreds'] == True)].drop(['playerForTestSetAndFuturePreds'], 1)
     player_box = player_box_features(player_box)
     # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    players = player_features(players)
+    merged = merged.merge(players, on=['playerId'], how='left')
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
     # These features have low activation
@@ -61,6 +64,8 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
         norm_std = pd.read_pickle('../input/mlbmergeddata/norm_std.pkl')
     norm = (norm - norm_min) / norm_std
     merged[list(norm.columns)] = norm
+    if not training:
+        merged = merged.fillna(0)  # Just in case there are unknown player ids
     # print(merged.isna().sum().to_string())
     # merged = reduce_mem_usage(merged)
     return merged
@@ -91,7 +96,11 @@ def merge_real_offsets(merged, training):
     if training:
         index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
         # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
-        targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean', 'playerForTestSetAndFuturePreds'], 1)
+        targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4',
+                               'target1_med', 'target2_med', 'target3_med', 'target4_med',
+                               'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
+                               'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
+                               'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
 
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
         targets = targets.drop('date', 1)
@@ -118,7 +127,8 @@ def merge_real_offsets(merged, training):
         # Update the offsets
         to_update = merged.drop(
             ['target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
-             'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+             'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean', 'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
+                               'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
         to_update = to_update.drop('date', 1)
         to_update = to_update.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
         to_update = to_update.groupby(['playerId']).last()
@@ -241,6 +251,29 @@ def player_box_features(player_box):
     # total = player_box[['date', 'numGames']].groupby(['date']).sum().rename(columns={'numGames': 'totalPlayerGames'})
     # player_box = player_box.merge(total, on='date', how='left')
     return player_box
+
+
+# Put this in the Notebook!
+def player_features(players):
+    players = players.drop(['birthCity', 'birthStateProvince', 'primaryPositionName'], 1)
+    # Use length of player name
+    players['playerName'] = players['playerName'].apply(lambda x: len(x))
+    # Date of birth
+    players['DOB'] = pd.to_numeric(pd.to_datetime(players['DOB']))
+    # MLB debut date (fill with median date)
+    players['mlbDebutDate'] = pd.to_datetime(players['mlbDebutDate']).fillna(value=pd.to_datetime('2017-04-03'))
+    players['mlbDebutDate'] = pd.to_numeric(players['mlbDebutDate'])
+    # Birth country - one hot
+    players['birthCountryUSA'] = np.where(players['birthCountry'] == 'USA', 1, 0)
+    players['birthCountryDR'] = np.where(players['birthCountry'] == 'Dominican Republic', 1, 0)
+    players['birthCountryOther'] = np.where((players['birthCountry'] != 'USA') & (players['birthCountry'] != 'Dominican Republic'), 1, 0)
+    players = players.drop(['birthCountry'], 1)
+    # Height and weight
+    # Primary position code
+    players['primaryPositionCode'] = players['primaryPositionCode'].apply(lambda x: int(x) if x.isdigit() else 0)
+    # Use 0/1 for whether in test set
+    players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
+    return players
 
 
 # Put this in the Notebook!
@@ -658,6 +691,8 @@ def main():
     # Compute the merged features
     merged = compute_all_merge_features()
     saved_merged(merged)
+    # players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv')
+    # player_features(players)
     # Test the test flow
     # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     # next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
