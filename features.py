@@ -28,6 +28,11 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, tra
                               (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
                               (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
                               (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+        # Add whether they are test set players
+        players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv', usecols=['playerId', 'playerForTestSetAndFuturePreds'])
+        players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
+        next_days = next_days.merge(players, on=['playerId'], how='left')
+        # next_days = next_days[(next_days['playerForTestSetAndFuturePreds'] == True)].drop(['playerForTestSetAndFuturePreds'], 1)
     player_box = player_box_features(player_box)
     # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
@@ -86,7 +91,7 @@ def merge_real_offsets(merged, training):
     if training:
         index = merged[['date', 'playerId']].sort_values(['playerId', 'date']).reset_index(drop=True)
         # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
-        targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+        targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med', 'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean', 'playerForTestSetAndFuturePreds'], 1)
 
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
         targets = targets.drop('date', 1)

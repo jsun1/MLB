@@ -29,7 +29,7 @@ def model_lgbm_inputs(merged):
 def main():
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-04-01')
-    training = False
+    training = True
     if training:
         merged_train = merged.loc[merged.date < split_date]
     else:
@@ -136,7 +136,7 @@ def main():
     if not training:
         date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         for i, model in enumerate([model1, model2, model3, model4]):
-            link = 'saved-models/m' + str(i+1) + '-' + date + '.pt'
+            link = 'saved-models/' + date + '_m' + str(i+1) + '.txt'
             model.booster_.save_model(link)
             print('Saved at', link)
 
