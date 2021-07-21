@@ -12,17 +12,19 @@ def compute_all_merge_features():
     month = pd.read_pickle('mlb-merged-data/months.pkl')
     day = pd.read_pickle('mlb-merged-data/days_of_week.pkl')
     players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv')
+    roster = pd.read_pickle('mlb-processed-data/rosters.pkl')
+    roster_agg = pd.read_pickle('mlb-merged-data/status.pkl')
     # positions = pd.read_pickle('mlb-merged-data/positions.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, True)
+    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, True)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, training):
+def compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, training):
     if training:
         # Limit training only to the season
         next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
@@ -38,8 +40,13 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, pla
     # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
-    players = player_features(players)
-    merged = merged.merge(players, on=['playerId'], how='left')
+    # players = player_features(players)
+    # merged = merged.merge(players, on=['playerId'], how='left')
+    # roster = pd.read_pickle('mlb-processed-data/rosters.pkl')
+    # roster_agg = pd.read_pickle('mlb-merged-data/status.pkl')
+    merged = merged.merge(roster[['date', 'playerId', 'statusCode']], on=['date', 'playerId'], how='left')
+    merged = merged.merge(roster_agg, on=['statusCode'], how='left')
+    merged = merged.drop(['statusCode'], 1).fillna(0)
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
     # These features have low activation
@@ -98,9 +105,9 @@ def merge_real_offsets(merged, training):
         # targets = merged[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
         targets = merged.drop(['engagementMetricsDate', 'target1', 'target2', 'target3', 'target4',
                                'target1_med', 'target2_med', 'target3_med', 'target4_med',
-                               'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean',
-                               'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
-                               'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
+                               'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)#,
+                               # 'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
+                               # 'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
 
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
         targets = targets.drop('date', 1)
@@ -543,8 +550,8 @@ def compute_pre_team():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
                           (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
-                          (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27')]
-    #                       #(next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+                          (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+                          (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
     next_days = next_days[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     player_box = player_box[(player_box['date'] >= '2018-03-29') & (player_box['date'] <= '2018-10-01') |
@@ -571,8 +578,15 @@ def compute_pre_team():
 
     rosters = pd.read_pickle('mlb-processed-data/rosters.pkl')
     rosters = rosters[(rosters['date'] >= '2018-03-29') & (rosters['date'] <= '2018-10-01') |
-                          (rosters['date'] >= '2019-03-20') & (rosters['date'] <= '2019-09-29') |
-                          (rosters['date'] >= '2020-07-23') & (rosters['date'] <= '2020-09-27')]
+                      (rosters['date'] >= '2019-03-20') & (rosters['date'] <= '2019-09-29') |
+                      (rosters['date'] >= '2020-07-23') & (rosters['date'] <= '2020-09-27') |
+                      (rosters['date'] >= '2021-04-01') & (rosters['date'] <= '2021-04-30')]
+
+    # next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+    #                       (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+    #                       (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+    #                       (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+    print('ROSTER')
     print(rosters[['teamId', 'statusCode']].nunique())
     print(rosters.shape)
     print(rosters.columns)
@@ -585,8 +599,34 @@ def compute_pre_team():
     print(merged.tail())
     print(merged['gameDate'].isna().sum())
     print(merged['status'].value_counts())
+    print(merged['statusCode'].value_counts())
+    status_agg = merged[['statusCode', 'target1', 'target2', 'target3', 'target4']].groupby(['statusCode']).median()
+    status_agg = status_agg.rename(columns={'target1': 'status_t1', 'target2': 'status_t2', 'target3': 'status_t3', 'target4': 'status_t4'})
+    status_agg.to_pickle('mlb-merged-data/status.pkl', protocol=4)
+    merged = merged.merge(status_agg, on=['statusCode'], how='left')
+    print(merged.head())
+    print(merged.tail())
 
 
+def compute_pre_transactions():
+    next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
+    next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
+                          (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
+                          (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
+                          (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+    transactions = pd.read_pickle('mlb-processed-data/transactions.pkl')
+    transactions = transactions[(transactions['date'] >= '2018-03-29') & (transactions['date'] <= '2018-10-01') |
+                                (transactions['date'] >= '2019-03-20') & (transactions['date'] <= '2019-09-29') |
+                                (transactions['date'] >= '2020-07-23') & (transactions['date'] <= '2020-09-27') |
+                                (transactions['date'] >= '2021-04-01') & (transactions['date'] <= '2021-04-30')]
+    merged = next_days.merge(transactions, on=['date', 'playerId'], how='left').reset_index(drop=True)
+    agg = merged[['typeCode', 'target1', 'target2', 'target3', 'target4']].groupby(['typeCode']).median()
+    agg = agg.rename(columns={'target1': 'tran_t1', 'target2': 'tran_t2', 'target3': 'tran_t3', 'target4': 'tran_t4'})
+    agg.to_pickle('mlb-merged-data/pre_transactions.pkl', protocol=4)
+    print(agg.head())
+    print(agg.tail())
+    print(agg.shape)
+    # merged = merged.merge(status_agg, on=['statusCode'], how='left')
 
 
 def compute_pre_position(training=True):
@@ -685,12 +725,13 @@ def saved_merged(merged):
 
 
 def main():
-    # compute_pre_position()
+    # compute_pre_team()
     # compute_pre_features(True)
     # compute_pre_date_features(False)
     # Compute the merged features
-    merged = compute_all_merge_features()
-    saved_merged(merged)
+    # merged = compute_all_merge_features()
+    # saved_merged(merged)
+    compute_pre_transactions()
     # players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv')
     # player_features(players)
     # Test the test flow
