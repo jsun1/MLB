@@ -29,7 +29,7 @@ def model_lgbm_inputs(merged):
 def main():
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     split_date = pd.to_datetime('2021-04-01')
-    training = True
+    training = False
     if training:
         merged_train = merged.loc[merged.date < split_date]
     else:
