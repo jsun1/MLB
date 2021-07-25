@@ -16,17 +16,18 @@ def compute_all_merge_features():
     roster_agg = pd.read_pickle('mlb-merged-data/status.pkl')
     trans = pd.read_pickle('mlb-processed-data/transactions.pkl')
     trans_agg = pd.read_pickle('mlb-merged-data/pre_transactions.pkl')
+    team_box = pd.read_pickle('mlb-processed-data/teamBoxScores.pkl')
     # positions = pd.read_pickle('mlb-merged-data/positions.pkl')
     # print(next_days.head())
     # print(player_box.head())
     # print(next_days.shape, player_box.shape)
     # print(player_box.columns)
     # player_box has 3 unique keys: playerId, date, gamePk
-    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, trans, trans_agg, True)
+    return compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, trans, trans_agg, team_box, True)
 
 
 # Put this in the Notebook!
-def compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, trans, trans_agg, training):
+def compute_merge_features(next_days, player_box, pre_agg, year, month, day, players, roster, roster_agg, trans, trans_agg, team_box, training):
     if training:
         # Limit training only to the season
         next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
@@ -38,12 +39,17 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, pla
         # players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
         # next_days = next_days.merge(players, on=['playerId'], how='left')
         # next_days = next_days[(next_days['playerForTestSetAndFuturePreds'] == True)].drop(['playerForTestSetAndFuturePreds'], 1)
+    orig_player_box = player_box.copy()
     player_box = player_box_features(player_box)
     # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
     # players = player_features(players)
     # merged = merged.merge(players, on=['playerId'], how='left')
+    # Team box features
+    # team_box = team_box_features(orig_player_box, team_box)
+    # merged = merged.merge(team_box, on=['date', 'playerId'], how='left')
+    # merged = merged.fillna(0)  # this will fill team_box as 0 for when there was no game played
     # Roster features
     merged = merged.merge(roster[['date', 'playerId', 'statusCode']], on=['date', 'playerId'], how='left')
     merged = merged.merge(roster_agg, on=['statusCode'], how='left')
@@ -55,6 +61,15 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, pla
     trans_merge = trans_merge.drop(['typeCode'], 1).fillna(0)
     trans_merge = trans_merge.groupby(by=['date', 'playerId'], sort=False).median()
     merged = merged.merge(trans_merge, on=['date', 'playerId'], how='left')
+    # Twitter followers
+    # print(merged.shape)
+    # twitter = pd.read_pickle('mlb-processed-data/playerTwitterFollowers.pkl')
+    # print(twitter.tail())
+    # twitter = twitter[['date', 'playerId', 'numberOfFollowers']]
+    # twitter_median = twitter['numberOfFollowers'].median()
+    # merged = merged.merge(twitter, on=['date', 'playerId'], how='left')
+    # merged['numberOfFollowers'] = merged['numberOfFollowers'].fillna(twitter_median)
+    # print(twitter_median, twitter, merged.shape)
     # Date features
     merged = merge_date_features(merged, year, month, day, training)
     merged = merge_pre_agg(merged, pre_agg, training)
@@ -117,6 +132,9 @@ def merge_real_offsets(merged, training):
                                'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)#,
                                # 'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
                                # 'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
+        # for target_col in targets.columns:
+        #     if target_col.startswith('team_'):
+        #         targets = targets.drop([target_col], 1)
 
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
         targets = targets.drop('date', 1)
@@ -214,8 +232,13 @@ def player_box_features(player_box):
     # positionCode/Name/Type, battingOrder have ~1000 outliers
     # inningsPitched is a float (0.1)
 
-    player_box = player_box.drop(['gamePk', 'gameDate', 'gameTimeUTC', 'teamId', 'jerseyNum',
+    player_box = player_box.drop(['gamePk', 'gameDate', 'teamId', 'jerseyNum',
        'teamName', 'playerName', 'positionName', 'positionType'], 1).reset_index(drop=True)
+    # Convert game time to float
+    player_box['gameTimeUTC'] = pd.to_datetime(player_box['gameTimeUTC']).dt.time
+    player_box['gameTimeUTC'] = player_box['gameTimeUTC'].apply(lambda x: x.hour + x.minute / 60)
+    # player_box['gameTimeUTC_min'] = player_box['gameTimeUTC']
+    # player_box['gameTimeUTC_max'] = player_box['gameTimeUTC']
     # Convert jerseyNum to int
     # a = player_box[['jerseyNum']]
     # for tuple in a.itertuples(index=True):
@@ -236,37 +259,107 @@ def player_box_features(player_box):
 
     first = lambda x: x.iloc[0]
     num_columns = len(player_box.columns)
+    style = 'max'
     player_box = player_box.groupby(['date', 'playerId']).agg({'numGames': 'sum', 'hasGame': 'max',
-        'home': 'max', #'gamePk': first, 'gameDate': first, 'gameTimeUTC': first, 'teamId': first,
+        'home': 'max', #'gamePk': first, 'gameDate': first,
+        'gameTimeUTC': 'median', #'gameTimeUTC_min': 'min', 'gameTimeUTC_max': 'max',  #'teamId': first,
        #'teamName': first, 'playerName': first,
         #'jerseyNum': 'min',
         'positionCode': first,
        #'positionName': first, 'positionType': first,
-        'battingOrder': 'min', 'gamesPlayedBatting': 'sum',
-       'flyOuts': 'sum', 'groundOuts': 'sum', 'runsScored': 'sum', 'doubles': 'sum', 'triples': 'sum', 'homeRuns': 'sum',
-       'strikeOuts': 'sum', 'baseOnBalls': 'sum', 'intentionalWalks': 'sum', 'hits': 'sum', 'hitByPitch': 'sum',
-       'atBats': 'sum', 'caughtStealing': 'sum', 'stolenBases': 'sum', 'groundIntoDoublePlay': 'sum',
-       'groundIntoTriplePlay': 'sum', 'plateAppearances': 'sum', 'totalBases': 'sum', 'rbi': 'sum',
-       'leftOnBase': 'sum', 'sacBunts': 'sum', 'sacFlies': 'sum', 'catchersInterference': 'sum',
-       'pickoffs': 'sum', 'gamesPlayedPitching': 'sum', 'gamesStartedPitching': 'sum',
-       'completeGamesPitching': 'sum', 'shutoutsPitching': 'sum', 'winsPitching': 'sum',
-       'lossesPitching': 'sum', 'flyOutsPitching': 'sum', 'airOutsPitching': 'sum',
-       'groundOutsPitching': 'sum', 'runsPitching': 'sum', 'doublesPitching': 'sum',
-       'triplesPitching': 'sum', 'homeRunsPitching': 'sum', 'strikeOutsPitching': 'sum',
-       'baseOnBallsPitching': 'sum', 'intentionalWalksPitching': 'sum', 'hitsPitching': 'sum',
-       'hitByPitchPitching': 'sum', 'atBatsPitching': 'sum', 'caughtStealingPitching': 'sum',
-       'stolenBasesPitching': 'sum', 'inningsPitched': 'sum', 'saveOpportunities': 'sum',  # inningsPitched is a float (0.1)
-       'earnedRuns': 'sum', 'battersFaced': 'sum', 'outsPitching': 'sum', 'pitchesThrown': 'sum', 'balls': 'sum',
-       'strikes': 'sum', 'hitBatsmen': 'sum', 'balks': 'sum', 'wildPitches': 'sum', 'pickoffsPitching': 'sum',
-       'rbiPitching': 'sum', 'gamesFinishedPitching': 'sum', 'inheritedRunners': 'sum',
-       'inheritedRunnersScored': 'sum', 'catchersInterferencePitching': 'sum',
-       'sacBuntsPitching': 'sum', 'sacFliesPitching': 'sum', 'saves': 'sum', 'holds': 'sum', 'blownSaves': 'sum',
-       'assists': 'sum', 'putOuts': 'sum', 'errors': 'sum', 'chances': 'sum'}).reset_index()
+        'battingOrder': 'min', 'gamesPlayedBatting': style,
+       'flyOuts': style, 'groundOuts': style, 'runsScored': style, 'doubles': style, 'triples': style, 'homeRuns': style,
+       'strikeOuts': style, 'baseOnBalls': style, 'intentionalWalks': style, 'hits': style, 'hitByPitch': style,
+       'atBats': style, 'caughtStealing': style, 'stolenBases': style, 'groundIntoDoublePlay': style,
+       'groundIntoTriplePlay': style, 'plateAppearances': style, 'totalBases': style, 'rbi': style,
+       'leftOnBase': style, 'sacBunts': style, 'sacFlies': style, 'catchersInterference': style,
+       'pickoffs': style, 'gamesPlayedPitching': style, 'gamesStartedPitching': style,
+       'completeGamesPitching': style, 'shutoutsPitching': style, 'winsPitching': style,
+       'lossesPitching': style, 'flyOutsPitching': style, 'airOutsPitching': style,
+       'groundOutsPitching': style, 'runsPitching': style, 'doublesPitching': style,
+       'triplesPitching': style, 'homeRunsPitching': style, 'strikeOutsPitching': style,
+       'baseOnBallsPitching': style, 'intentionalWalksPitching': style, 'hitsPitching': style,
+       'hitByPitchPitching': style, 'atBatsPitching': style, 'caughtStealingPitching': style,
+       'stolenBasesPitching': style, 'inningsPitched': style, 'saveOpportunities': style,  # inningsPitched is a float (0.1)
+       'earnedRuns': style, 'battersFaced': style, 'outsPitching': style, 'pitchesThrown': style, 'balls': style,
+       'strikes': style, 'hitBatsmen': style, 'balks': style, 'wildPitches': style, 'pickoffsPitching': style,
+       'rbiPitching': style, 'gamesFinishedPitching': style, 'inheritedRunners': style,
+       'inheritedRunnersScored': style, 'catchersInterferencePitching': style,
+       'sacBuntsPitching': style, 'sacFliesPitching': style, 'saves': style, 'holds': style, 'blownSaves': style,
+       'assists': style, 'putOuts': style, 'errors': style, 'chances': style}).reset_index()
     assert(len(player_box.columns) == num_columns)
     # Add a column for total number of players that have games on a given day (not helpful)
     # total = player_box[['date', 'numGames']].groupby(['date']).sum().rename(columns={'numGames': 'totalPlayerGames'})
     # player_box = player_box.merge(total, on='date', how='left')
     return player_box
+
+
+def team_box_features(player_box, team_box):
+    # player_box = player_box[['playerId', 'date', 'gamePk', 'teamId']]
+    team_box = team_box.drop(['home', 'gameDate', 'gameTimeUTC'], 1)
+    # Drop these because they're all zero
+    team_box = team_box.drop(['groundIntoTriplePlay', 'airOutsPitching', 'groundOutsPitching', 'doublesPitching',
+                              'triplesPitching', 'balks', 'wildPitches', 'inheritedRunners', 'inheritedRunnersScored'], 1)
+    # print(team_box.columns)
+    team_box = team_box.rename(mapper=lambda x: x if x in ['date', 'teamId', 'gamePk'] else 'team_' + x, axis=1)
+    player_box = player_box.reset_index(drop=True)
+    # merged = player_box[['playerId', 'date', 'gamePk', 'teamId']].merge(team_box, on=['date', 'teamId', 'gamePk'], how='left')
+    # Sum up all team_box for the day
+    # team_box_sum = team_box.drop(['teamId', 'gamePk'], 1).groupby(['date']).sum()
+    # merged = player_box[['playerId', 'date']].merge(team_box_sum, on=['date'], how='left')
+    player_box_max = player_box.drop(
+        ['playerId', 'groundIntoTriplePlay', 'airOutsPitching', 'groundOutsPitching', 'doublesPitching',
+         'triplesPitching', 'balks', 'wildPitches', 'inheritedRunners', 'inheritedRunnersScored'],
+        1)
+    player_box_max = player_box_max[['date', 'flyOuts', 'groundOuts', 'runsScored',
+       'doubles', 'triples', 'homeRuns', 'strikeOuts', 'baseOnBalls',
+       'intentionalWalks', 'hits', 'hitByPitch', 'atBats', 'caughtStealing',
+       'stolenBases', 'groundIntoDoublePlay', 'plateAppearances', 'totalBases',
+       'rbi', 'leftOnBase', 'sacBunts', 'sacFlies', 'catchersInterference',
+       'pickoffs', 'runsPitching', 'homeRunsPitching', 'strikeOutsPitching',
+       'baseOnBallsPitching', 'intentionalWalksPitching', 'hitsPitching',
+       'hitByPitchPitching', 'atBatsPitching', 'caughtStealingPitching',
+       'stolenBasesPitching', 'inningsPitched', 'earnedRuns', 'battersFaced',
+       'outsPitching', 'hitBatsmen', 'pickoffsPitching', 'rbiPitching',
+       'catchersInterferencePitching', 'sacBuntsPitching', 'sacFliesPitching']]
+    player_box_max = player_box_max.groupby('date').max()
+    player_box_max = player_box_max.rename(mapper=lambda x: x if x in ['date', 'playerId'] else 'team_' + x, axis=1)
+    merged = player_box[['playerId', 'date']].merge(player_box_max, on=['date'], how='left')
+    # Divide each player box by the team box
+    assert(merged.shape[0] == player_box.shape[0])
+    player_box = player_box.fillna(0)
+    assert(merged['playerId'].equals(player_box['playerId']))
+    for col in team_box.columns:
+        if col not in ['date', 'teamId', 'gamePk']:
+            assert(col.startswith('team_'))
+            player_col = col[len('team_'):]
+            merged[col] = player_box[player_col] / merged[col]
+    # merged = merged.fillna(0)  # this is because there was division by 0
+    merged = merged.replace(np.inf, 0)
+
+    # Get information from the other team
+    team_box_min = team_box[['teamId', 'gamePk']].groupby(['gamePk']).min().rename(mapper=lambda x: 'min_teamId' if x == 'teamId' else x, axis=1)
+    team_box_max = team_box[['teamId', 'gamePk']].groupby(['gamePk']).max().rename(mapper=lambda x: 'max_teamId' if x == 'teamId' else x, axis=1)
+    team_box_other = team_box[['date', 'teamId', 'gamePk']]
+    team_box_other = team_box_other.merge(team_box_min, on=['gamePk'], how='left')
+    team_box_other = team_box_other.merge(team_box_max, on=['gamePk'], how='left')
+    team_box_other['other_teamId'] = np.where(team_box_other['teamId'] == team_box_other['min_teamId'], team_box_other['max_teamId'], team_box_other['min_teamId'])
+    team_box_other_team = team_box.rename(mapper=lambda x: x if x in ['date', 'gamePk'] else 'other_' + x, axis=1)#.set_index('other_teamId')
+    team_box_other = team_box_other.merge(team_box, on=['date', 'gamePk', 'teamId'], how='left')
+    team_box_other = team_box_other.merge(team_box_other_team, on=['date', 'gamePk', 'other_teamId'], how='left')
+    # team_box_other['team_won'] = np.where(team_box_other['team_runsScored'] > team_box_other['other_team_runsScored'], 1, 0)
+    # team_box_other['team_won'] = np.where(team_box_other['team_runsScored'] == team_box_other['other_team_runsScored'], 0.5, team_box_other['team_won'])
+    team_box_other['team_won'] = team_box_other['team_runsScored'] - team_box_other['other_team_runsScored']
+    team_box_other = team_box_other[['date', 'teamId', 'gamePk', 'team_won']]
+    print(team_box_other.head())
+    print(team_box_other.tail())
+    merged = player_box[['playerId', 'date', 'gamePk', 'teamId']].merge(team_box_other, on=['date', 'teamId', 'gamePk'], how='left')
+    # merged = merged
+    # Aggregate
+    team_agg = merged.drop(['gamePk', 'teamId'], 1)
+    # team_agg = merged
+    team_agg = team_agg.groupby(['date', 'playerId']).median()#.sum()
+    return team_agg
 
 
 # Put this in the Notebook!
@@ -742,7 +835,26 @@ def main():
     merged = compute_all_merge_features()
     saved_merged(merged)
     # compute_pre_transactions()
-    # players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv')
+
+    # awards = pd.read_pickle('mlb-processed-data/awards.pkl')
+    # twitter = pd.read_pickle('mlb-processed-data/playerTwitterFollowers.pkl')
+    # events = pd.read_pickle('mlb-processed-data/events.pkl')
+    # standings = pd.read_pickle('mlb-processed-data/standings.pkl')
+    # print(awards.tail(), awards.shape)
+    # print(twitter.tail(), twitter.shape)
+    # print(events.tail(), events.shape)
+    # print(standings.tail(), standings.shape)
+    # print(events.columns)
+    # print(standings.columns)
+    # awards['date'].plot()
+    # plt.show()
+
+    # player = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
+    # team = pd.read_pickle('mlb-processed-data/teamBoxScores.pkl')
+    # tbf = team_box_features(player, team)
+    # tt = tbf[['team_groundIntoTriplePlay', 'team_airOutsPitching', 'team_runsPitching']]
+    # print(tt, tt.shape, team.shape)
+    # team_box_features(player, team)
     # player_features(players)
     # Test the test flow
     # next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
