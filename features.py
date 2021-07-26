@@ -35,17 +35,18 @@ def compute_merge_features(next_days, player_box, pre_agg, year, month, day, pla
         next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
                               (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
                               (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
-                              (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+                              (next_days['date'] >= '2021-04-01')]
         # Add whether they are test set players
         # players = pd.read_csv('mlb-player-digital-engagement-forecasting/players.csv', usecols=['playerId', 'playerForTestSetAndFuturePreds'])
         # players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
         # next_days = next_days.merge(players, on=['playerId'], how='left')
         # next_days = next_days[(next_days['playerForTestSetAndFuturePreds'] == True)].drop(['playerForTestSetAndFuturePreds'], 1)
-    orig_player_box = player_box.copy()
+    # orig_player_box = player_box.copy()
     player_box = player_box_features(player_box)
     # player_box = player_box.merge(positions, on=['positionCode'], how='left')
     merged = next_days.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
+    # Player features
     # players = player_features(players)
     # merged = merged.merge(players, on=['playerId'], how='left')
     # Team box features
@@ -142,7 +143,7 @@ def merge_real_offsets(merged, training):
                                # 'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
                                # 'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
         for target_col in targets.columns:
-            if target_col.startswith('team_'):
+            if target_col.startswith('team_') or target_col.startswith('year_'):
                 targets = targets.drop([target_col], 1)
 
         targets = targets.sort_values(['playerId', 'date']).reset_index(drop=True)
@@ -170,10 +171,11 @@ def merge_real_offsets(merged, training):
         # Update the offsets
         to_update = merged.drop(
             ['target1', 'target2', 'target3', 'target4', 'target1_med', 'target2_med', 'target3_med', 'target4_med',
-             'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean', 'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
-                               'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
+             'target1_mean', 'target2_mean', 'target3_mean', 'target4_mean'], 1)
+             #'playerName', 'DOB', 'mlbDebutDate', 'heightInches', 'weight', 'primaryPositionCode',
+              #                 'playerForTestSetAndFuturePreds', 'birthCountryUSA', 'birthCountryDR', 'birthCountryOther'], 1)
         for target_col in to_update.columns:
-            if target_col.startswith('team_'):
+            if target_col.startswith('team_') or target_col.startswith('year_'):
                 to_update = to_update.drop([target_col], 1)
         to_update = to_update.drop('date', 1)
         to_update = to_update.rename(mapper=lambda x: x if x == 'playerId' else '1d_' + x, axis=1)
@@ -197,9 +199,9 @@ def merge_date_features(merged, year, month, day, training):
     merged['month'] = merged['date'].dt.month
     merged['dayOfWeek'] = merged['date'].dt.dayofweek
     # Year
-    # merged = merged.merge(year, on='year', how='left')
-    # for i in ['1', '2', '3', '4']:
-    #     merged['year_tg' + i] = np.where(merged['numGames'] == 0, merged['year_tn' + i], merged['year_ty' + i])
+    merged = merged.merge(year, on='year', how='left')
+    for i in ['1', '2', '3', '4']:
+        merged['year_tg' + i] = np.where(merged['numGames'] == 0, merged['year_tn' + i], merged['year_ty' + i])
     # Month
     merged = merged.merge(month, on='month', how='left')
     for i in ['1', '2', '3', '4']:
@@ -209,8 +211,8 @@ def merge_date_features(merged, year, month, day, training):
     for i in ['1', '2', '3', '4']:
         merged['day_tg' + i] = np.where(merged['numGames'] == 0, merged['day_tn' + i], merged['day_ty' + i])
     to_drop = ['year', 'month', 'dayOfWeek']
-    # for name in ['year', 'month', 'day']:
-    for name in ['month', 'day']:
+    for name in ['year', 'month', 'day']:
+    # for name in ['month', 'day']:
         for i in ['1', '2', '3', '4']:
             to_drop.append(name + '_ty' + i)
             to_drop.append(name + '_tn' + i)
@@ -379,6 +381,7 @@ def team_box_features(player_box, team_box):
 # Put this in the Notebook!
 def player_features(players):
     players = players.drop(['birthCity', 'birthStateProvince', 'primaryPositionName'], 1)
+    """
     # Use length of player name
     players['playerName'] = players['playerName'].apply(lambda x: len(x))
     # Date of birth
@@ -394,8 +397,10 @@ def player_features(players):
     # Height and weight
     # Primary position code
     players['primaryPositionCode'] = players['primaryPositionCode'].apply(lambda x: int(x) if x.isdigit() else 0)
+    """
     # Use 0/1 for whether in test set
     players['playerForTestSetAndFuturePreds'] = players['playerForTestSetAndFuturePreds'].apply(lambda x: 1.0 if x == True else 0.0)
+    players = players[['playerId', 'playerForTestSetAndFuturePreds']]
     return players
 
 
@@ -441,8 +446,8 @@ def compute_pre_features(training=True):
     #                                 (next_days_orig['date'] >= '2019-02-20') & (next_days_orig['date'] <= '2019-09-29') |
     #                                 (next_days_orig['date'] >= '2020-06-23') & (next_days_orig['date'] <= '2020-09-27') |
     #                                 (next_days_orig['date'] >= '2021-03-01') & (next_days_orig['date'] <= '2021-04-30')]
-    if not training:
-        next_days_orig = next_days_orig[(next_days_orig['date'] >= '2019-05-01')]
+    # if not training:
+    #     next_days_orig = next_days_orig[(next_days_orig['date'] >= '2019-05-01')]
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
@@ -627,10 +632,16 @@ def compute_pre_date_features(training=True):
                'tn1', 'tn2', 'tn3', 'tn4']
     # Years - only use data from first month of season, since that's all we have for 2021
     years = next_days[['year', 'date'] + targets]
-    years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
-                  (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |
-                  (years['date'] > '2020-07-23') & (years['date'] < '2020-08-22') |
-                  (years['date'] > '2021-04-01') & (years['date'] < '2021-05-01')].drop('date', 1)
+    if training:
+        years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
+                      (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |
+                      (years['date'] > '2020-07-23') & (years['date'] < '2020-08-22') |
+                      (years['date'] > '2021-04-01') & (years['date'] < '2021-06-01')].drop('date', 1)
+    else:
+        years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
+                      (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |
+                      (years['date'] > '2020-07-23') & (years['date'] < '2020-08-22') |
+                      (years['date'] > '2021-04-01')].drop('date', 1)
     years = years.groupby(['year']).median()
     years.columns = list(map(lambda name: 'year_' + name, years.columns))
     # Months - don't take 2020 values b/c it was irregular season. no 2021 values b/c they're not complete
@@ -648,7 +659,7 @@ def compute_pre_date_features(training=True):
         days_of_week = days_of_week[(days_of_week['date'] >= '2018-03-29') & (days_of_week['date'] <= '2018-10-01') |
                                     (days_of_week['date'] >= '2019-03-20') & (days_of_week['date'] <= '2019-09-29') |
                                     (days_of_week['date'] >= '2020-07-23') & (days_of_week['date'] <= '2020-09-27') |
-                                    (days_of_week['date'] >= '2021-04-01') & (days_of_week['date'] <= '2021-04-30')]
+                                    (days_of_week['date'] >= '2021-04-01')]
     days_of_week = days_of_week.drop('date', 1)
     days_of_week = days_of_week.groupby(['dayOfWeek']).median()
     days_of_week.columns = list(map(lambda name: 'day_' + name, days_of_week.columns))
@@ -667,8 +678,9 @@ def compute_pre_team():
     next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
                           (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
                           (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
-                          (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
+                          (next_days['date'] >= '2021-04-01')]
     next_days = next_days[['date', 'playerId', 'target1', 'target2', 'target3', 'target4']]
+    """
     player_box = pd.read_pickle('mlb-processed-data/playerBoxScores.pkl')
     player_box = player_box[(player_box['date'] >= '2018-03-29') & (player_box['date'] <= '2018-10-01') |
                           (player_box['date'] >= '2019-03-20') & (player_box['date'] <= '2019-09-29') |
@@ -691,12 +703,13 @@ def compute_pre_team():
     # teams.to_pickle('mlb-merged-data/teams.pkl', protocol=4)
 
     # print(next_days[(next_days['date'] == '2018-03-29')].shape())
+    """
 
     rosters = pd.read_pickle('mlb-processed-data/rosters.pkl')
     rosters = rosters[(rosters['date'] >= '2018-03-29') & (rosters['date'] <= '2018-10-01') |
                       (rosters['date'] >= '2019-03-20') & (rosters['date'] <= '2019-09-29') |
                       (rosters['date'] >= '2020-07-23') & (rosters['date'] <= '2020-09-27') |
-                      (rosters['date'] >= '2021-04-01') & (rosters['date'] <= '2021-04-30')]
+                      (rosters['date'] >= '2021-04-01')]
 
     # next_days = next_days[(next_days['date'] >= '2018-03-29') & (next_days['date'] <= '2018-10-01') |
     #                       (next_days['date'] >= '2019-03-20') & (next_days['date'] <= '2019-09-29') |
@@ -731,6 +744,7 @@ def compute_pre_transactions():
     #                       (next_days['date'] >= '2020-07-23') & (next_days['date'] <= '2020-09-27') |
     #                       (next_days['date'] >= '2021-04-01') & (next_days['date'] <= '2021-04-30')]
     transactions = pd.read_pickle('mlb-processed-data/transactions.pkl')
+    print(transactions.tail())
     # transactions = transactions[(transactions['date'] >= '2018-03-29') & (transactions['date'] <= '2018-10-01') |
     #                             (transactions['date'] >= '2019-03-20') & (transactions['date'] <= '2019-09-29') |
     #                             (transactions['date'] >= '2020-07-23') & (transactions['date'] <= '2020-09-27') |
@@ -749,6 +763,7 @@ def compute_pre_transactions():
 def compute_pre_award():
     next_days = pd.read_pickle('mlb-processed-data/nextDayPlayerEngagement.pkl')
     awards = pd.read_pickle('mlb-processed-data/awards.pkl')
+    print(awards.tail())
     merged = next_days.merge(awards, on=['date', 'playerId'], how='left').reset_index(drop=True)
     agg = merged[['awardId', 'target1', 'target2', 'target3', 'target4']].groupby(['awardId']).median()
     agg = agg.rename(columns={'target1': 'award_t1', 'target2': 'award_t2', 'target3': 'award_t3', 'target4': 'award_t4'})
@@ -853,12 +868,13 @@ def saved_merged(merged):
 
 def main():
     # compute_pre_team()
-    # compute_pre_features(True)
+    # compute_pre_features(False)
     # compute_pre_date_features(False)
     # Compute the merged features
     merged = compute_all_merge_features()
     saved_merged(merged)
     # compute_pre_award()
+    # compute_pre_transactions()
 
     # awards = pd.read_pickle('mlb-processed-data/awards.pkl')
     # twitter = pd.read_pickle('mlb-processed-data/playerTwitterFollowers.pkl')

@@ -10,9 +10,10 @@ import time
 
 
 def read_train():
-    training = pd.read_csv('mlb-player-digital-engagement-forecasting/train.csv',
+    training = pd.read_csv('mlb-player-digital-engagement-forecasting/train_updated.csv',
                            usecols=['date', 'transactions', 'standings', 'awards', 'events', 'playerTwitterFollowers',
-                                    'teamTwitterFollowers'])
+                                    'teamTwitterFollowers', 'nextDayPlayerEngagement', 'playerBoxScores', 'rosters',
+                                    'games', 'teamBoxScores'])
     # date is a unique key
     #TODO: is setting the date to a datetime needed?
     training['date'] = pd.to_datetime(training['date'], format='%Y%m%d')

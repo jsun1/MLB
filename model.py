@@ -77,7 +77,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(464, 4, 32)
+    model = LinearRegression(472, 4, 32)
     return model
 
 
@@ -85,7 +85,7 @@ def main():
     # get the training data from features
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
     # merged[['1d_t1', '1d_t2', '1d_t3', '1d_t4']] = merged[['target1_med', 'target2_med', 'target3_med', 'target4_med']]
-    split_date = pd.to_datetime('2021-04-01')
+    split_date = pd.to_datetime('2021-06-01')
     training = False
     if training:
         merged_train = merged.loc[merged.date < split_date]
