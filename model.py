@@ -77,7 +77,7 @@ def model_inputs(merged):
 
 # Put this in the Notebook!
 def make_model():
-    model = LinearRegression(472, 4, 32)
+    model = LinearRegression(488, 4, 32)
     return model
 
 

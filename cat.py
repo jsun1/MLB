@@ -35,13 +35,13 @@ def fit_lgbm(x_train, y_train, x_valid, y_valid, target, training, verbose=100):
     # else:
 
     if target == 1:
-        estimators = 1700
+        estimators = 300
     elif target == 2:
-        estimators = 100
+        estimators = 300
     elif target == 3:
-        estimators = 400
+        estimators = 300
     else:
-        estimators = 500
+        estimators = 300
     # estimators = 2000
     learning_rate = 0.05
     model_cb = CatBoostRegressor(
