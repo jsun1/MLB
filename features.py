@@ -1,3 +1,4 @@
+import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -447,6 +448,22 @@ def merge_pre_roll(merged, pre_roll, training):
     m_shape = merged.shape
     if training:
         # In training, use all values
+        # print('pre roll', pre_roll.shape)
+        # test_roll = pd.read_pickle('mlb-merged-data/roll_test_45.pkl')
+        # pre_roll_test = pre_roll[(pre_roll['date'] >= '2021-06-10')]
+        # pre_roll_test = pre_roll_test.merge(test_roll, on=['date', 'playerId'], how='left', suffixes=['_x', None])
+        # to_drop = []
+        # for col in pre_roll_test.columns:
+        #     if col.endswith('_x'):
+        #         to_drop.append(col)
+        # pre_roll_test = pre_roll_test.drop(to_drop, 1)
+        # # Account for unknown players
+        # unknown = test_roll[(test_roll['playerId'] == -1) & (test_roll['date'] == '2021-06-10')].reset_index(drop=True).copy().iloc[0]
+        # pre_roll_test = pre_roll_test.fillna(value=unknown)
+        # pre_roll = pre_roll[(pre_roll['date'] < '2021-06-10')]
+        # print('pre roll', pre_roll.shape)
+        # pre_roll = pd.concat([pre_roll, pre_roll_test], ignore_index=True)
+        # print('pre roll', pre_roll.shape)
         merged = merged.merge(pre_roll, on=['date', 'playerId'])
     else:
         lookup = pre_roll
@@ -593,7 +610,8 @@ def compute_pre_rolling(training=True):
     #                                 (next_days_orig['date'] >= '2020-07-23') & (next_days_orig['date'] <= '2020-09-27') |
     #                                 (next_days_orig['date'] >= '2021-04-01')]
     if not training:
-        next_days_orig = next_days_orig[(next_days_orig['date'] >= '2021-04-19')]  # 90 days before 7/17/2021
+        next_days_orig = next_days_orig[(next_days_orig['date'] >= '2021-06-03')]  # 45 days before 7/17/2021
+        # next_days_orig = next_days_orig[(next_days_orig['date'] >= '2021-03-27') & (next_days_orig['date'] < '2021-06-10')]  # 75 days before 6/10/2021
     player_box = player_box_features(pd.read_pickle('mlb-processed-data/playerBoxScores.pkl'))
     merged = next_days_orig.merge(player_box, on=['date', 'playerId'], how='left')
     merged = merged.fillna(0)  # this will fill player_box as 0 for when there was no game played
@@ -631,7 +649,7 @@ def compute_pre_rolling(training=True):
                'roll1_y_game_mean': 'mean', 'roll2_y_game_mean': 'mean', 'roll3_y_game_mean': 'mean', 'roll4_y_game_mean': 'mean',
                'roll1_n_game_mean': 'mean', 'roll2_n_game_mean': 'mean', 'roll3_n_game_mean': 'mean', 'roll4_n_game_mean': 'mean'
                }
-        agg_targets = next_days.groupby(['playerId']).rolling(90, min_periods=1).agg(agg).reset_index(drop=True)
+        agg_targets = next_days.groupby(['playerId']).rolling(45, min_periods=1).agg(agg).reset_index(drop=True)
 
         # Shift the targets down by 1, because we can't use the target on its own day (only from previous days)
         # TODO: instead of fillna(0), use the unknown player's mean/medians
@@ -673,8 +691,6 @@ def compute_pre_rolling(training=True):
         print('agg_all', agg_all)
         agg_targets = agg_targets.append(agg_all, ignore_index=True)
         # print(agg_targets.head())
-        # TODO: Compute the last day's target (for lag)
-
         # Ensure the correct order
         agg_targets = agg_targets[['playerId', 'roll1_med', 'roll2_med', 'roll3_med', 'roll4_med',
                                    'roll1_mean', 'roll2_mean', 'roll3_mean', 'roll4_mean',
@@ -684,6 +700,20 @@ def compute_pre_rolling(training=True):
                                    'roll1_n_game_mean', 'roll2_n_game_mean', 'roll3_n_game_mean', 'roll4_n_game_mean'
                                    ]]
         print(agg_targets.shape, agg_targets.columns)
+        # Synthesize the dates
+        # print('synth', agg_targets.shape)
+        # all_together = []
+        # start_date = datetime.date(2021, 6, 10)
+        # end_date = datetime.date(2021, 7, 17)
+        # delta = datetime.timedelta(days=1)
+        # while start_date <= end_date:
+        #     agg_targets_date = agg_targets.copy()
+        #     agg_targets_date['date'] = pd.to_datetime(start_date)
+        #     all_together.append(agg_targets_date)
+        #     start_date += delta
+        # agg_targets = pd.concat(all_together, ignore_index=True)
+        # print('synth', agg_targets.shape)
+        # print(agg_targets['date'])
     print(agg_targets.head())
     print(agg_targets.tail())
     agg_targets = reduce_mem_usage(agg_targets)
@@ -725,7 +755,7 @@ def compute_pre_date_features(training=True):
         years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
                       (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |
                       (years['date'] > '2020-07-23') & (years['date'] < '2020-08-22') |
-                      (years['date'] > '2021-04-01') & (years['date'] < '2021-06-01')].drop('date', 1)
+                      (years['date'] > '2021-04-01') & (years['date'] < '2021-06-10')].drop('date', 1)
     else:
         years = years[(years['date'] > '2018-03-29') & (years['date'] < '2018-04-28') |
                       (years['date'] > '2019-03-20') & (years['date'] < '2019-04-19') |

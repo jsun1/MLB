@@ -35,13 +35,13 @@ def fit_lgbm(x_train, y_train, x_valid, y_valid, target, training, verbose=100):
     # else:
 
     if target == 1:
-        estimators = 300
+        estimators = 2000
     elif target == 2:
-        estimators = 300
+        estimators = 100
     elif target == 3:
-        estimators = 300
+        estimators = 1600
     else:
-        estimators = 300
+        estimators = 100
     # estimators = 2000
     learning_rate = 0.05
     model_cb = CatBoostRegressor(
@@ -82,7 +82,7 @@ def model_lgbm_inputs(merged):
 
 def main():
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    split_date = pd.to_datetime('2021-06-01')
+    split_date = pd.to_datetime('2021-06-10')
     training = False
     if training:
         merged_train = merged.loc[merged.date < split_date]

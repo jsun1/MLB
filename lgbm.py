@@ -28,7 +28,7 @@ def model_lgbm_inputs(merged):
 
 def main():
     merged = pd.read_pickle('mlb-merged-data/merged.pkl')
-    split_date = pd.to_datetime('2021-06-01')
+    split_date = pd.to_datetime('2021-06-10')
     training = False
     if training:
         merged_train = merged.loc[merged.date < split_date]
@@ -70,7 +70,7 @@ def main():
         'objective': 'mae',
         # 'reg_alpha': 0.1,
         # 'reg_lambda': 0.1,
-        'n_estimators': 300,  # 80,
+        'n_estimators': 100,  # 80,
         # 'learning_rate': 0.1,
         # 'random_state': 42,
         'num_leaves': 300,  # 22
@@ -90,7 +90,7 @@ def main():
         'objective': 'mae',
         # 'reg_alpha': 0.1,
         # 'reg_lambda': 0.1,
-        'n_estimators': 300, #10000,
+        'n_estimators': 100, #10000,
         # 'learning_rate': 0.1,
         # 'random_state': 42,
         'num_leaves': 300,
